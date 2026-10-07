@@ -24,6 +24,7 @@ if str(_CONFIG_DIR) not in sys.path:
     sys.path.insert(0, str(_CONFIG_DIR))
 
 from custom_components.unifi_ai_speaker.const import (  # noqa: E402
+    CONF_ALARM_PANEL,
     CONF_API_KEY,
     CONF_HOST,
     CONF_VERIFY_SSL,
@@ -102,6 +103,24 @@ def mock_api():
 
     client.get_speaker.side_effect = _get_speaker
 
+    async def _set_volume(speaker_id, volume):
+        speakers[speaker_id].volume = volume
+        return speakers[speaker_id]
+
+    client.set_volume.side_effect = _set_volume
+
+    async def _set_mic_volume(speaker_id, volume):
+        speakers[speaker_id].mic_volume = volume
+        return speakers[speaker_id]
+
+    client.set_mic_volume.side_effect = _set_mic_volume
+
+    async def _set_mic_enabled(speaker_id, enabled):
+        speakers[speaker_id].is_mic_enabled = enabled
+        return speakers[speaker_id]
+
+    client.set_mic_enabled.side_effect = _set_mic_enabled
+
     with patch(
         "custom_components.unifi_ai_speaker.UnifiAiSpeakerApiClient",
         return_value=client,
@@ -121,3 +140,27 @@ async def setup_integration(
     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
     return mock_config_entry
+
+
+PANEL_ENTITY_ID = "alarm_control_panel.fake_panel"
+
+
+@pytest.fixture
+async def setup_integration_with_panel(hass: HomeAssistant, mock_api) -> ConfigEntry:
+    """Set up the integration with an alarm panel configured for GUI auto-mute."""
+    hass.states.async_set(PANEL_ENTITY_ID, "disarmed")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=f"UniFi AI Speaker ({HOST})",
+        unique_id=HOST,
+        data={
+            CONF_HOST: HOST,
+            CONF_API_KEY: API_KEY,
+            CONF_VERIFY_SSL: False,
+        },
+        options={CONF_ALARM_PANEL: PANEL_ENTITY_ID},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry

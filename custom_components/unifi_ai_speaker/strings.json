@@ -55,11 +55,11 @@
         "title": "UniFi AI Speaker options",
         "data": {
           "restore_delay": "Alarm mute restore delay",
-          "alarm_panel": "Alarm panel to monitor (optional)"
+          "alarm_panel": "Alarm panel for automatic mute (optional)"
         },
         "data_description": {
           "restore_delay": "How long after a disarm-mute to restore the saved volume. Default 600 seconds (10 minutes).",
-          "alarm_panel": "Optional. If set, any mute is cancelled automatically when this alarm panel leaves the disarmed state (re-arm or re-trigger). Leave empty to keep the integration decoupled and drive it only via service calls."
+          "alarm_panel": "Optional, no YAML needed. If set, every speaker on this entry is automatically muted when this panel goes from triggered to disarmed, and the mute is cancelled immediately if the panel re-arms or re-triggers. Leave empty to keep the integration decoupled and drive it only via the unifi_ai_speaker.* services in your own automations/Alarmo actions."
         }
       }
     }

@@ -87,7 +87,9 @@ console, or no speakers found. Multiple AI Speakers are all supported.
 
 ### Options (⚙ on the integration)
 - **Alarm mute restore delay** — seconds before restoring volume (default `600`).
-- **Alarm panel to monitor** *(optional)* — see *Re-trigger safety* below.
+- **Alarm panel for automatic mute** *(optional)* — pick your alarm panel here
+  (e.g. `alarm_control_panel.alarmo`) for a fully GUI, **no-YAML** alarm setup.
+  See *Alarmo setup* below.
 
 ---
 
@@ -128,15 +130,42 @@ All target UniFi AI Speaker entities or devices.
 
 Your existing alarm **trigger** stays exactly as-is. Alarmo keeps calling your
 working `rest_command.unifi_alarm` (the Protect Alarm Manager webhook). This
-integration only adds the **disarm → silence** half.
+integration only adds the **disarm → silence** half — and there are two ways
+to wire that up.
 
-### Alarmo — Triggered action (unchanged)
+### Option A — GUI only, no YAML (recommended)
+
+On the integration's **⚙ Options**, set **Alarm panel for automatic mute** to
+your alarm panel (e.g. `alarm_control_panel.alarmo`), picked from a dropdown.
+That's the entire setup. Nothing to add in Alarmo's action editor at all:
+
+- When the panel goes from **triggered → disarmed**, every speaker on this
+  entry is automatically muted and restored later — exactly the
+  `mute_for_alarm_disarm` behaviour below, just triggered by the panel state
+  instead of a manually-wired action.
+- If the panel **re-arms or re-triggers** while a speaker is muted, the mute
+  is cancelled and the real volume restored immediately, so the new alarm is
+  audible. No separate re-trigger action to configure.
+- A routine disarm that was **never triggered** (e.g. "arm away" → "disarm on
+  arrival") does **not** mute anything — only an actual triggered → disarmed
+  transition does.
+
+This is the more reliable path: there's no YAML to typo, so a misconfigured
+target entity can't silently make the mute never fire. It works with any
+`alarm_control_panel` entity, not just Alarmo.
+
+### Option B — Explicit Alarmo actions (advanced / multiple panels)
+
+Leave **Alarm panel for automatic mute** empty and wire the services into
+Alarmo's action editor yourself — useful if you want different behaviour per
+panel, or to combine with other automations.
+
+**Alarmo — Triggered action (unchanged):**
 ```yaml
 service: rest_command.unifi_alarm
 ```
 
-### Alarmo — Disarmed action (new)
-In Alarmo's action editor, on the **Disarmed** event:
+**Alarmo — Disarmed action:**
 ```yaml
 service: unifi_ai_speaker.mute_for_alarm_disarm
 target:
@@ -159,23 +188,13 @@ target:
 >   entity_id: number.garage_ai_speaker_volume
 > ```
 
-### Re-trigger safety (strongly recommended)
-
-If the alarm fires again *during* the 10-minute mute window, the speaker must not
-stay muted. Two equivalent options:
-
-**A. Loosely coupled (recommended):** add a second Alarmo action on the
-**Armed/Triggered** events:
+**Re-trigger safety:** add a second Alarmo action on the **Armed/Triggered**
+events so a new alarm isn't left muted:
 ```yaml
 service: unifi_ai_speaker.cancel_alarm_mute
 target:
   entity_id: number.garage_ai_speaker_volume
 ```
-
-**B. Zero extra wiring:** set **Alarm panel to monitor** in the integration
-options to `alarm_control_panel.alarmo`. Any mute is then cancelled automatically
-whenever the panel leaves the disarmed state. This is the only optional,
-opt-in coupling to Alarmo; left empty the integration stays fully decoupled.
 
 ---
 

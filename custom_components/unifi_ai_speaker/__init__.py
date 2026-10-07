@@ -23,7 +23,9 @@ from .const import (
     CONF_ALARM_PANEL,
     CONF_API_KEY,
     CONF_HOST,
+    CONF_RESTORE_DELAY,
     CONF_VERIFY_SSL,
+    DEFAULT_RESTORE_DELAY,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     STORAGE_VERSION,
@@ -127,30 +129,65 @@ async def _async_reload_on_update(
 def _setup_alarm_panel_monitor(
     hass: HomeAssistant, entry: UnifiAiSpeakerConfigEntry
 ) -> None:
-    """Optionally watch an alarm panel to auto-cancel mutes on re-arm/re-trigger.
+    """Optionally watch an alarm panel for a fully GUI, no-YAML alarm setup.
 
-    This is an opt-in option. When no panel is configured the integration stays
-    fully decoupled from Alarmo and relies on explicit service calls.
+    This is opt-in: pick a panel in the integration's Options (a dropdown —
+    no YAML) and both halves of the alarm workflow happen automatically:
+
+    * The panel goes from ``triggered`` to ``disarmed`` -> every speaker on
+      this entry is muted for the alarm (same as calling
+      ``mute_for_alarm_disarm``), with no Alarmo action to configure.
+    * The panel enters any non-disarmed state while a speaker is muted -> the
+      mute is cancelled and the real volume restored immediately, so a new
+      alarm is audible (re-trigger safety).
+
+    Only an explicit ``triggered -> disarmed`` transition auto-mutes, not
+    every disarm, so routine "arm away -> disarm on arrival" doesn't cause an
+    unnecessary, unaudible volume blip. Works with any ``alarm_control_panel``
+    entity (Alarmo or HA's built-in alarm panel), not just Alarmo specifically.
+
+    When no panel is configured the integration stays fully decoupled and
+    relies on the explicit ``unifi_ai_speaker.*`` services instead.
     """
     panel_entity = entry.options.get(CONF_ALARM_PANEL)
     if not panel_entity:
         return
 
+    restore_delay = entry.options.get(CONF_RESTORE_DELAY, DEFAULT_RESTORE_DELAY)
+
     @callback
     def _handle(event: Event) -> None:
         new_state = event.data.get("new_state")
-        if new_state is None or new_state.state not in _ACTIVE_ALARM_STATES:
+        old_state = event.data.get("old_state")
+        if new_state is None:
             return
         runtime = entry.runtime_data
-        for speaker_id in list(runtime.coordinator.data):
-            if runtime.mute.is_muted(speaker_id):
+
+        was_triggered = old_state is not None and old_state.state == "triggered"
+        if new_state.state == "disarmed" and was_triggered:
+            for speaker_id in list(runtime.coordinator.data):
                 _LOGGER.info(
-                    "Alarm panel %s became %s; cancelling mute on speaker %s",
+                    "Alarm panel %s disarmed after triggering; "
+                    "auto-muting speaker %s for %ss",
                     panel_entity,
-                    new_state.state,
                     speaker_id,
+                    restore_delay,
                 )
-                hass.async_create_task(runtime.mute.async_cancel(speaker_id))
+                hass.async_create_task(
+                    runtime.mute.async_mute(speaker_id, restore_delay)
+                )
+            return
+
+        if new_state.state in _ACTIVE_ALARM_STATES:
+            for speaker_id in list(runtime.coordinator.data):
+                if runtime.mute.is_muted(speaker_id):
+                    _LOGGER.info(
+                        "Alarm panel %s became %s; cancelling mute on speaker %s",
+                        panel_entity,
+                        new_state.state,
+                        speaker_id,
+                    )
+                    hass.async_create_task(runtime.mute.async_cancel(speaker_id))
 
     entry.runtime_data.cancel_alarm_tracker = async_track_state_change_event(
         hass, [panel_entity], _handle
