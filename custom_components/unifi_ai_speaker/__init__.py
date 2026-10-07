@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -18,14 +19,21 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 
+if TYPE_CHECKING:
+    from homeassistant.helpers.event import EventStateChangedData
+
 from .api import UnifiAiSpeakerApiClient
 from .const import (
     CONF_ALARM_PANEL,
     CONF_API_KEY,
     CONF_HOST,
+    CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
+    CONF_TEST_SOUND_DELAY,
     CONF_VERIFY_SSL,
+    DEFAULT_PLAY_TEST_SOUND,
     DEFAULT_RESTORE_DELAY,
+    DEFAULT_TEST_SOUND_DELAY,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     STORAGE_VERSION,
@@ -154,9 +162,15 @@ def _setup_alarm_panel_monitor(
         return
 
     restore_delay = entry.options.get(CONF_RESTORE_DELAY, DEFAULT_RESTORE_DELAY)
+    play_test_sound = entry.options.get(
+        CONF_PLAY_TEST_SOUND, DEFAULT_PLAY_TEST_SOUND
+    )
+    test_sound_delay = entry.options.get(
+        CONF_TEST_SOUND_DELAY, DEFAULT_TEST_SOUND_DELAY
+    )
 
     @callback
-    def _handle(event: Event) -> None:
+    def _handle(event: Event[EventStateChangedData]) -> None:
         new_state = event.data.get("new_state")
         old_state = event.data.get("old_state")
         if new_state is None:
@@ -174,7 +188,12 @@ def _setup_alarm_panel_monitor(
                     restore_delay,
                 )
                 hass.async_create_task(
-                    runtime.mute.async_mute(speaker_id, restore_delay)
+                    runtime.mute.async_mute(
+                        speaker_id,
+                        restore_delay,
+                        play_test_sound=play_test_sound,
+                        test_sound_delay=test_sound_delay,
+                    )
                 )
             return
 

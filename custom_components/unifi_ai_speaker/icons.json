@@ -1,0 +1,60 @@
+{
+  "entity": {
+    "number": {
+      "volume": {
+        "default": "mdi:volume-high"
+      },
+      "mic_volume": {
+        "default": "mdi:microphone"
+      }
+    },
+    "switch": {
+      "mic_enabled": {
+        "default": "mdi:microphone",
+        "state": {
+          "off": "mdi:microphone-off"
+        }
+      }
+    },
+    "sensor": {
+      "speaker_status": {
+        "default": "mdi:volume-source",
+        "state": {
+          "idle": "mdi:volume-off",
+          "streaming": "mdi:waveform",
+          "playing": "mdi:volume-high",
+          "tts_playing": "mdi:message-text",
+          "uploading": "mdi:upload"
+        }
+      },
+      "connection_state": {
+        "default": "mdi:lan-connect",
+        "state": {
+          "CONNECTED": "mdi:lan-connect",
+          "CONNECTING": "mdi:lan-pending",
+          "DISCONNECTED": "mdi:lan-disconnect"
+        }
+      },
+      "speaker_mode": {
+        "default": "mdi:account-voice",
+        "state": {
+          "listen": "mdi:ear-hearing",
+          "talk": "mdi:account-voice"
+        }
+      }
+    },
+    "binary_sensor": {
+      "alarm_mute_active": {
+        "default": "mdi:volume-high",
+        "state": {
+          "on": "mdi:volume-mute"
+        }
+      }
+    },
+    "button": {
+      "test_sound": {
+        "default": "mdi:volume-source"
+      }
+    }
+  }
+}

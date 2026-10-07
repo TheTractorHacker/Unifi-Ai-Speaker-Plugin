@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
 from custom_components.unifi_ai_speaker.api import (
     Speaker,
     UnifiAiSpeakerApiClient,
@@ -11,8 +14,6 @@ from custom_components.unifi_ai_speaker.api import (
     UnifiNotFoundError,
     normalize_host,
 )
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import ALL_SPEAKERS, API_KEY, BASE, HOST, SPEAKER_WITH_MIC
 

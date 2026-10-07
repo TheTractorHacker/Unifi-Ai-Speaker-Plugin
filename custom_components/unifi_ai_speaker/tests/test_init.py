@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import pytest
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+
+from custom_components.unifi_ai_speaker.api import Speaker, UnifiConnectionError
 from custom_components.unifi_ai_speaker.const import (
     DOMAIN,
     SERVICE_CANCEL_ALARM_MUTE,
     SERVICE_MUTE_FOR_ALARM_DISARM,
 )
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
 
 from .const import SPEAKER_NO_MIC, SPEAKER_WITH_MIC
 
@@ -88,6 +92,43 @@ async def test_test_sound_button(
     mock_api.test_sound.assert_awaited_with(MIC_ID)
 
 
+async def test_test_sound_button_api_failure(
+    hass: HomeAssistant, setup_integration, mock_api
+) -> None:
+    """A failing test-sound API call surfaces as a HomeAssistantError."""
+    mock_api.test_sound.side_effect = UnifiConnectionError("speaker unreachable")
+    ent_reg = er.async_get(hass)
+    entity_id = ent_reg.async_get_entity_id("button", DOMAIN, f"{MIC_ID}_test_sound")
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "button", "press", {"entity_id": entity_id}, blocking=True
+        )
+
+
+async def test_speaker_offline_marks_volume_unavailable(
+    hass: HomeAssistant, setup_integration, mock_api
+) -> None:
+    """A disconnected speaker's volume entity goes unavailable; connection
+    state still reports it so the problem is visible, not hidden."""
+    offline = {**SPEAKER_WITH_MIC, "state": "DISCONNECTED"}
+    mock_api.get_speakers.return_value = [
+        Speaker.from_api(offline),
+        Speaker.from_api(SPEAKER_NO_MIC),
+    ]
+    runtime = setup_integration.runtime_data
+    await runtime.coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    volume_entity = _entity_id(hass, f"{MIC_ID}_volume")
+    assert hass.states.get(volume_entity).state == "unavailable"
+
+    ent_reg = er.async_get(hass)
+    conn_entity = ent_reg.async_get_entity_id(
+        "sensor", DOMAIN, f"{MIC_ID}_connection_state"
+    )
+    assert hass.states.get(conn_entity).state == "DISCONNECTED"
+
+
 async def test_services_registered(hass: HomeAssistant, setup_integration) -> None:
     """All three alarm services are registered."""
     assert hass.services.has_service(DOMAIN, SERVICE_MUTE_FOR_ALARM_DISARM)
@@ -116,6 +157,29 @@ async def test_mute_service_targets_device(
     )
     # Cancel restores the saved volume (75).
     mock_api.set_volume.assert_awaited_with(MIC_ID, 75)
+
+
+async def test_mute_service_targets_entity(
+    hass: HomeAssistant, setup_integration, mock_api
+) -> None:
+    """The mute service also resolves a plain entity_id target (Alarmo-style).
+
+    Covers the legacy ``data: {entity_id: ...}`` call shape (no ``target:``
+    key) that existing Alarmo YAML configurations rely on.
+    """
+    entity_id = _entity_id(hass, f"{MIC_ID}_volume")
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_MUTE_FOR_ALARM_DISARM,
+        {"entity_id": entity_id, "restore_delay": 120},
+        blocking=True,
+    )
+    mock_api.set_volume.assert_awaited_with(MIC_ID, 0)
+
+    # Clean up the pending restore timer rather than leaving it dangling.
+    await hass.services.async_call(
+        DOMAIN, SERVICE_CANCEL_ALARM_MUTE, {"entity_id": entity_id}, blocking=True
+    )
 
 
 async def test_unload(hass: HomeAssistant, setup_integration) -> None:

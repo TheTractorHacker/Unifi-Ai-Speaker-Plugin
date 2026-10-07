@@ -79,4 +79,6 @@ class AlarmMuteBinarySensor(UnifiAiSpeakerEntity, BinarySensorEntity):
             "restore_at": dt_util.utc_from_timestamp(
                 state.restore_deadline
             ).isoformat(),
+            "play_test_sound": state.play_test_sound,
+            "test_sound_delay": state.test_sound_delay,
         }

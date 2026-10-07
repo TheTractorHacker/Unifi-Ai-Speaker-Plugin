@@ -23,17 +23,18 @@ _CONFIG_DIR = Path(__file__).resolve().parents[3]
 if str(_CONFIG_DIR) not in sys.path:
     sys.path.insert(0, str(_CONFIG_DIR))
 
+from homeassistant.config_entries import ConfigEntry  # noqa: E402
+from homeassistant.core import HomeAssistant  # noqa: E402
+from pytest_homeassistant_custom_component.common import (  # noqa: E402
+    MockConfigEntry,
+)
+
 from custom_components.unifi_ai_speaker.const import (  # noqa: E402
     CONF_ALARM_PANEL,
     CONF_API_KEY,
     CONF_HOST,
     CONF_VERIFY_SSL,
     DOMAIN,
-)
-from homeassistant.config_entries import ConfigEntry  # noqa: E402
-from homeassistant.core import HomeAssistant  # noqa: E402
-from pytest_homeassistant_custom_component.common import (  # noqa: E402
-    MockConfigEntry,
 )
 
 from .const import ALL_SPEAKERS, API_KEY, HOST, META_INFO  # noqa: E402

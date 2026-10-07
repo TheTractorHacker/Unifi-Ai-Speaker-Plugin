@@ -43,8 +43,20 @@ class UnifiAiSpeakerEntity(CoordinatorEntity[UnifiAiSpeakerCoordinator]):
 
     @property
     def available(self) -> bool:
-        """Entity is available while the speaker is known to the console."""
-        return self.coordinator.last_update_success and self.speaker is not None
+        """Entity is available while the coordinator works and the speaker is connected.
+
+        A speaker that is known to the console but currently ``DISCONNECTED``
+        cannot actually act on writes (volume, mic), so controls correctly
+        show as unavailable rather than silently accepting changes that
+        won't apply. The diagnostic connection-state sensor overrides this to
+        stay available precisely so it can report the disconnected state.
+        """
+        speaker = self.speaker
+        return (
+            self.coordinator.last_update_success
+            and speaker is not None
+            and speaker.available
+        )
 
 
 def _format_mac(mac: str) -> str:

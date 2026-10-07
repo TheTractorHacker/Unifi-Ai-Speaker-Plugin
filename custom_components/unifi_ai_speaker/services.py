@@ -15,6 +15,7 @@ speaker ids, so any entity of a speaker device may be targeted.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import voluptuous as vol
 from homeassistant.const import ATTR_AREA_ID, ATTR_DEVICE_ID, ATTR_ENTITY_ID
@@ -26,23 +27,39 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import (
     ATTR_RESTORE_DELAY,
+    CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
+    CONF_TEST_SOUND_DELAY,
+    DEFAULT_PLAY_TEST_SOUND,
     DEFAULT_RESTORE_DELAY,
+    DEFAULT_TEST_SOUND_DELAY,
     DOMAIN,
     MAX_RESTORE_DELAY,
+    MAX_TEST_SOUND_DELAY,
     MIN_RESTORE_DELAY,
+    MIN_TEST_SOUND_DELAY,
     SERVICE_CANCEL_ALARM_MUTE,
     SERVICE_MUTE_FOR_ALARM_DISARM,
     SERVICE_RESTORE_ALARM_VOLUME,
 )
 
+if TYPE_CHECKING:
+    from . import RuntimeData
+
 _LOGGER = logging.getLogger(__name__)
+
+_ATTR_PLAY_TEST_SOUND = "play_test_sound"
 
 _MUTE_SCHEMA = cv.make_entity_service_schema(
     {
         vol.Optional(ATTR_RESTORE_DELAY): vol.All(
             vol.Coerce(int),
             vol.Range(min=MIN_RESTORE_DELAY, max=MAX_RESTORE_DELAY),
+        ),
+        vol.Optional(_ATTR_PLAY_TEST_SOUND): cv.boolean,
+        vol.Optional(CONF_TEST_SOUND_DELAY): vol.All(
+            vol.Coerce(float),
+            vol.Range(min=MIN_TEST_SOUND_DELAY, max=MAX_TEST_SOUND_DELAY),
         ),
     }
 )
@@ -52,7 +69,7 @@ _TARGET_ONLY_SCHEMA = cv.make_entity_service_schema({})
 @callback
 def _resolve_targets(
     hass: HomeAssistant, call: ServiceCall
-) -> list[tuple[object, str]]:
+) -> list[tuple[RuntimeData, str]]:
     """Return ``(runtime_data, speaker_id)`` pairs referenced by the call.
 
     Resolves the entity_id/device_id/area_id target selector by reading the
@@ -85,17 +102,21 @@ def _resolve_targets(
     # speaker_id -> entry_id, collected from targeted entities' devices.
     speaker_to_entry: dict[str, str] = {}
     for entity_id in entity_ids:
-        entity = ent_reg.entities.get(entity_id)
-        if entity is None or entity.platform != DOMAIN or entity.device_id is None:
+        target_entity = ent_reg.entities.get(entity_id)
+        if (
+            target_entity is None
+            or target_entity.platform != DOMAIN
+            or target_entity.device_id is None
+        ):
             continue
-        device = dev_reg.devices.get(entity.device_id)
-        if device is None:
+        target_device = dev_reg.devices.get(target_entity.device_id)
+        if target_device is None:
             continue
-        for domain, identifier in device.identifiers:
+        for domain, identifier in target_device.identifiers:
             if domain == DOMAIN:
-                speaker_to_entry[identifier] = entity.config_entry_id or ""
+                speaker_to_entry[identifier] = target_entity.config_entry_id or ""
 
-    results: list[tuple[object, str]] = []
+    results: list[tuple[RuntimeData, str]] = []
     for speaker_id, entry_id in speaker_to_entry.items():
         entry = hass.config_entries.async_get_entry(entry_id)
         if entry is None or not hasattr(entry, "runtime_data"):
@@ -104,12 +125,33 @@ def _resolve_targets(
     return results
 
 
-def _restore_delay_for(runtime: object, call: ServiceCall) -> int:
+def _restore_delay_for(runtime: RuntimeData, call: ServiceCall) -> int:
     """Resolve the restore delay: call data > entry option > default."""
     if ATTR_RESTORE_DELAY in call.data:
         return int(call.data[ATTR_RESTORE_DELAY])
-    entry = getattr(runtime, "coordinator").config_entry
+    entry = runtime.coordinator.config_entry
+    assert entry is not None  # always set; this coordinator is entry-scoped
     return int(entry.options.get(CONF_RESTORE_DELAY, DEFAULT_RESTORE_DELAY))
+
+
+def _play_test_sound_for(runtime: RuntimeData, call: ServiceCall) -> bool:
+    """Resolve whether to play the confirmation chime: call data > option."""
+    if _ATTR_PLAY_TEST_SOUND in call.data:
+        return bool(call.data[_ATTR_PLAY_TEST_SOUND])
+    entry = runtime.coordinator.config_entry
+    assert entry is not None  # always set; this coordinator is entry-scoped
+    return bool(entry.options.get(CONF_PLAY_TEST_SOUND, DEFAULT_PLAY_TEST_SOUND))
+
+
+def _test_sound_delay_for(runtime: RuntimeData, call: ServiceCall) -> float:
+    """Resolve the confirmation-chime delay: call data > entry option > default."""
+    if CONF_TEST_SOUND_DELAY in call.data:
+        return float(call.data[CONF_TEST_SOUND_DELAY])
+    entry = runtime.coordinator.config_entry
+    assert entry is not None  # always set; this coordinator is entry-scoped
+    return float(
+        entry.options.get(CONF_TEST_SOUND_DELAY, DEFAULT_TEST_SOUND_DELAY)
+    )
 
 
 @callback
@@ -126,8 +168,15 @@ def async_setup_services(hass: HomeAssistant) -> None:
             )
         for runtime, speaker_id in targets:
             delay = _restore_delay_for(runtime, call)
+            play_test_sound = _play_test_sound_for(runtime, call)
+            test_sound_delay = _test_sound_delay_for(runtime, call)
             try:
-                await runtime.mute.async_mute(speaker_id, delay)
+                await runtime.mute.async_mute(
+                    speaker_id,
+                    delay,
+                    play_test_sound=play_test_sound,
+                    test_sound_delay=test_sound_delay,
+                )
             except HomeAssistantError:
                 raise
             except Exception as err:  # noqa: BLE001 - surface as HA error

@@ -55,10 +55,14 @@
         "title": "UniFi AI Speaker options",
         "data": {
           "restore_delay": "Alarm mute restore delay",
+          "play_test_sound_after_restore": "Play test sound after volume restore",
+          "test_sound_delay": "Test sound delay after volume restore",
           "alarm_panel": "Alarm panel for automatic mute (optional)"
         },
         "data_description": {
           "restore_delay": "How long after a disarm-mute to restore the saved volume. Default 600 seconds (10 minutes).",
+          "play_test_sound_after_restore": "Play a short confirmation chime once the volume is restored, so you know the alarm mute has ended. Uses the speaker's own test-sound feature.",
+          "test_sound_delay": "How long to wait after restoring the volume before playing the confirmation chime, so the speaker has time to apply the change first. Default 2 seconds.",
           "alarm_panel": "Optional, no YAML needed. If set, every speaker on this entry is automatically muted when this panel goes from triggered to disarmed, and the mute is cancelled immediately if the panel re-arms or re-triggers. Leave empty to keep the integration decoupled and drive it only via the unifi_ai_speaker.* services in your own automations/Alarmo actions."
         }
       }
@@ -114,6 +118,14 @@
         "restore_delay": {
           "name": "Restore delay",
           "description": "Seconds to wait before restoring the saved volume. Omit to use the integration option (default 600 seconds)."
+        },
+        "play_test_sound": {
+          "name": "Play test sound after restore",
+          "description": "Play a confirmation chime once the volume is restored. Omit to use the integration option (default on)."
+        },
+        "test_sound_delay": {
+          "name": "Test sound delay",
+          "description": "Seconds to wait after restoring the volume before playing the confirmation chime. Omit to use the integration option (default 2 seconds)."
         }
       }
     },

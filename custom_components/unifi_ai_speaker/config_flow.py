@@ -37,13 +37,19 @@ from .const import (
     CONF_ALARM_PANEL,
     CONF_API_KEY,
     CONF_HOST,
+    CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
+    CONF_TEST_SOUND_DELAY,
     CONF_VERIFY_SSL,
+    DEFAULT_PLAY_TEST_SOUND,
     DEFAULT_RESTORE_DELAY,
+    DEFAULT_TEST_SOUND_DELAY,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     MAX_RESTORE_DELAY,
+    MAX_TEST_SOUND_DELAY,
     MIN_RESTORE_DELAY,
+    MIN_TEST_SOUND_DELAY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -258,7 +264,14 @@ class UnifiAiSpeakerConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class UnifiAiSpeakerOptionsFlow(OptionsFlow):
-    """Options: restore delay and optional alarm panel to monitor."""
+    """Options: alarm-disarm mute behaviour and optional alarm panel.
+
+    These are global, entry-wide settings (not per-speaker): every speaker
+    discovered on this console shares the same restore delay and
+    confirmation-chime behaviour. That matches the existing per-call
+    ``restore_delay``/``play_test_sound``/``test_sound_delay`` service fields,
+    which can still override these per invocation if ever needed.
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -286,6 +299,26 @@ class UnifiAiSpeakerOptionsFlow(OptionsFlow):
                             min=MIN_RESTORE_DELAY,
                             max=MAX_RESTORE_DELAY,
                             step=1,
+                            unit_of_measurement="seconds",
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_PLAY_TEST_SOUND,
+                        default=options.get(
+                            CONF_PLAY_TEST_SOUND, DEFAULT_PLAY_TEST_SOUND
+                        ),
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_TEST_SOUND_DELAY,
+                        default=options.get(
+                            CONF_TEST_SOUND_DELAY, DEFAULT_TEST_SOUND_DELAY
+                        ),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=MIN_TEST_SOUND_DELAY,
+                            max=MAX_TEST_SOUND_DELAY,
+                            step=0.5,
                             unit_of_measurement="seconds",
                             mode=NumberSelectorMode.BOX,
                         )

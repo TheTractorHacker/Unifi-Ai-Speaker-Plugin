@@ -18,6 +18,8 @@ CONF_VERIFY_SSL: Final = "verify_ssl"
 
 CONF_RESTORE_DELAY: Final = "restore_delay"
 CONF_ALARM_PANEL: Final = "alarm_panel"
+CONF_PLAY_TEST_SOUND: Final = "play_test_sound_after_restore"
+CONF_TEST_SOUND_DELAY: Final = "test_sound_delay"
 
 # Verify SSL defaults to False because UniFi Protect consoles ship with a
 # self-signed certificate on the LAN. The config flow explains the trade-off.
@@ -28,6 +30,14 @@ DEFAULT_VERIFY_SSL: Final = False
 DEFAULT_RESTORE_DELAY: Final = 600  # seconds
 MIN_RESTORE_DELAY: Final = 10
 MAX_RESTORE_DELAY: Final = 3600
+
+# A short confirmation chime after the volume is restored, so a listener
+# knows the alarm mute has ended. On by default; the delay gives the
+# just-applied volume change a moment to take effect on the speaker first.
+DEFAULT_PLAY_TEST_SOUND: Final = True
+DEFAULT_TEST_SOUND_DELAY: Final = 2  # seconds
+MIN_TEST_SOUND_DELAY: Final = 0
+MAX_TEST_SOUND_DELAY: Final = 30
 
 # ---------------------------------------------------------------------------
 # API

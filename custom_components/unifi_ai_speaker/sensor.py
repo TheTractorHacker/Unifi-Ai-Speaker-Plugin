@@ -90,12 +90,14 @@ class SpeakerSensor(UnifiAiSpeakerEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Connection-state sensor stays available to report DISCONNECTED."""
+        """Connection-state sensor stays available to report DISCONNECTED.
+
+        Every other sensor defers to the base class, which already requires
+        the speaker to be connected.
+        """
         if self.entity_description.key == "connection_state":
             return self.coordinator.last_update_success and self.speaker is not None
-        return super().available and (speaker := self.speaker) is not None and (
-            speaker.available
-        )
+        return super().available
 
     @property
     def native_value(self) -> str | None:

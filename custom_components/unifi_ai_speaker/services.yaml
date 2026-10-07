@@ -24,6 +24,30 @@ mute_for_alarm_disarm:
           step: 1
           unit_of_measurement: seconds
           mode: box
+    play_test_sound:
+      name: Play test sound after restore
+      description: >-
+        Play a short confirmation chime once the volume is restored. Omit to
+        use the integration option (default on).
+      required: false
+      example: true
+      selector:
+        boolean:
+    test_sound_delay:
+      name: Test sound delay
+      description: >-
+        Seconds to wait after restoring the volume before playing the
+        confirmation chime, so the speaker has time to apply the change.
+        Omit to use the integration option (default 2 seconds).
+      required: false
+      example: 2
+      selector:
+        number:
+          min: 0
+          max: 30
+          step: 0.5
+          unit_of_measurement: seconds
+          mode: box
 
 restore_alarm_volume:
   name: Restore alarm volume

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
 from custom_components.unifi_ai_speaker.api import (
     UnifiAuthError,
     UnifiConnectionError,
@@ -9,13 +13,12 @@ from custom_components.unifi_ai_speaker.api import (
 from custom_components.unifi_ai_speaker.const import (
     CONF_API_KEY,
     CONF_HOST,
+    CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
+    CONF_TEST_SOUND_DELAY,
     CONF_VERIFY_SSL,
     DOMAIN,
 )
-from homeassistant.config_entries import SOURCE_USER
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
 
 from .const import API_KEY
 
@@ -91,7 +94,7 @@ async def test_duplicate_console_aborts(
 
 
 async def test_options_flow(hass: HomeAssistant, setup_integration) -> None:
-    """The options flow stores a custom restore delay."""
+    """The options flow stores a custom restore delay (other fields default)."""
     result = await hass.config_entries.options.async_init(
         setup_integration.entry_id
     )
@@ -101,3 +104,23 @@ async def test_options_flow(hass: HomeAssistant, setup_integration) -> None:
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert setup_integration.options[CONF_RESTORE_DELAY] == 300
+
+
+async def test_options_flow_test_sound_settings(
+    hass: HomeAssistant, setup_integration
+) -> None:
+    """The options flow stores the test-sound-after-restore settings."""
+    result = await hass.config_entries.options.async_init(
+        setup_integration.entry_id
+    )
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_RESTORE_DELAY: 600,
+            CONF_PLAY_TEST_SOUND: False,
+            CONF_TEST_SOUND_DELAY: 5,
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert setup_integration.options[CONF_PLAY_TEST_SOUND] is False
+    assert setup_integration.options[CONF_TEST_SOUND_DELAY] == 5
