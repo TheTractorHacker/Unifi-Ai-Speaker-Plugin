@@ -40,16 +40,20 @@ from .const import (
     CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
     CONF_TEST_SOUND_DELAY,
+    CONF_TEST_SOUND_VOLUME,
     CONF_VERIFY_SSL,
     DEFAULT_PLAY_TEST_SOUND,
     DEFAULT_RESTORE_DELAY,
     DEFAULT_TEST_SOUND_DELAY,
+    DEFAULT_TEST_SOUND_VOLUME,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     MAX_RESTORE_DELAY,
     MAX_TEST_SOUND_DELAY,
     MIN_RESTORE_DELAY,
     MIN_TEST_SOUND_DELAY,
+    VOLUME_MAX,
+    VOLUME_MIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -320,6 +324,20 @@ class UnifiAiSpeakerOptionsFlow(OptionsFlow):
                             max=MAX_TEST_SOUND_DELAY,
                             step=0.5,
                             unit_of_measurement="seconds",
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_TEST_SOUND_VOLUME,
+                        default=options.get(
+                            CONF_TEST_SOUND_VOLUME, DEFAULT_TEST_SOUND_VOLUME
+                        ),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=VOLUME_MIN,
+                            max=VOLUME_MAX,
+                            step=1,
+                            unit_of_measurement="%",
                             mode=NumberSelectorMode.BOX,
                         )
                     ),

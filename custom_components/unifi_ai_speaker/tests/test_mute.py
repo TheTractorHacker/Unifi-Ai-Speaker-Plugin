@@ -225,6 +225,42 @@ async def test_automatic_restore_plays_test_sound_when_enabled(
     client.get_speakers.assert_awaited()
 
 
+async def test_chime_plays_at_quiet_volume_before_real_restore(
+    hass: HomeAssistant, env
+) -> None:
+    """The chime plays at its own (quiet) volume, never at the real/alarm volume.
+
+    Verifies both the exact volumes used and their order: set_volume(quiet)
+    -> test_sound -> set_volume(real), never the reverse.
+    """
+    controller, client, speakers, _ = env
+
+    await controller.async_mute(
+        SPEAKER_ID,
+        60,
+        play_test_sound=True,
+        test_sound_delay=0,
+        test_sound_volume=15,
+    )
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+    await hass.async_block_till_done()
+
+    set_volume_calls = [
+        c for c in client.mock_calls if c[0] == "set_volume"
+    ]
+    # First write after the initial mute-to-0 is the quiet chime volume...
+    assert set_volume_calls[-2].args == (SPEAKER_ID, 15)
+    # ...and only after that does the real volume get restored.
+    assert set_volume_calls[-1].args == (SPEAKER_ID, 75)
+
+    chime_index = next(
+        i for i, c in enumerate(client.mock_calls) if c[0] == "test_sound"
+    )
+    quiet_write_index = client.mock_calls.index(set_volume_calls[-2])
+    real_write_index = client.mock_calls.index(set_volume_calls[-1])
+    assert quiet_write_index < chime_index < real_write_index
+
+
 async def test_automatic_restore_skips_test_sound_when_disabled(
     hass: HomeAssistant, env
 ) -> None:
@@ -289,10 +325,10 @@ async def test_cancel_never_plays_test_sound(hass: HomeAssistant, env) -> None:
     client.test_sound.assert_not_awaited()
 
 
-async def test_restore_failure_does_not_play_test_sound(
+async def test_quiet_volume_failure_skips_test_sound_and_retries(
     hass: HomeAssistant, env
 ) -> None:
-    """A failed restore attempt never plays the chime for that attempt.
+    """A failure writing the quiet chime volume never plays the chime.
 
     The underlying write is flaky-once (console briefly offline) so the
     pending retry timer is exercised to completion rather than left dangling.
@@ -302,14 +338,18 @@ async def test_restore_failure_does_not_play_test_sound(
     calls = {"n": 0}
 
     async def _flaky(speaker_id, volume):
-        if volume == 75 and calls["n"] == 0:
+        if volume == 30 and calls["n"] == 0:  # the quiet test-sound volume
             calls["n"] += 1
             raise UnifiConnectionError("offline")
         speakers[speaker_id].volume = volume
         return speakers[speaker_id]
 
     await controller.async_mute(
-        SPEAKER_ID, 60, play_test_sound=True, test_sound_delay=0
+        SPEAKER_ID,
+        60,
+        play_test_sound=True,
+        test_sound_delay=0,
+        test_sound_volume=30,
     )
     client.set_volume.side_effect = _flaky
 
@@ -319,12 +359,54 @@ async def test_restore_failure_does_not_play_test_sound(
     assert controller.is_muted(SPEAKER_ID)  # retry still pending
     client.test_sound.assert_not_awaited()
 
-    # The retry succeeds; only now does the chime play (lifecycle completes).
+    # The retry succeeds; the chime plays once, then the real volume restores.
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=130))
     await hass.async_block_till_done()
 
     assert not controller.is_muted(SPEAKER_ID)
+    assert speakers[SPEAKER_ID].volume == 75
     client.test_sound.assert_awaited_once_with(SPEAKER_ID)
+
+
+async def test_final_restore_failure_does_not_replay_test_sound(
+    hass: HomeAssistant, env
+) -> None:
+    """A failure AFTER the chime has already played must not replay it on retry."""
+    controller, client, speakers, _ = env
+
+    calls = {"n": 0}
+
+    async def _flaky(speaker_id, volume):
+        if volume == 75 and calls["n"] == 0:  # the final, post-chime restore
+            calls["n"] += 1
+            raise UnifiConnectionError("offline")
+        speakers[speaker_id].volume = volume
+        return speakers[speaker_id]
+
+    await controller.async_mute(
+        SPEAKER_ID,
+        60,
+        play_test_sound=True,
+        test_sound_delay=0,
+        test_sound_volume=30,
+    )
+    client.set_volume.side_effect = _flaky
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+    await hass.async_block_till_done()
+
+    # The chime already played during this first (partially failed) attempt.
+    assert controller.is_muted(SPEAKER_ID)  # retry still pending
+    assert speakers[SPEAKER_ID].volume == 30  # stuck at the quiet volume
+    client.test_sound.assert_awaited_once_with(SPEAKER_ID)
+
+    # The retry resumes at the final write only — no second chime.
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=130))
+    await hass.async_block_till_done()
+
+    assert not controller.is_muted(SPEAKER_ID)
+    assert speakers[SPEAKER_ID].volume == 75
+    client.test_sound.assert_awaited_once_with(SPEAKER_ID)  # still just once
 
 
 async def test_test_sound_api_failure_still_clears_mute_state(
@@ -347,44 +429,60 @@ async def test_test_sound_api_failure_still_clears_mute_state(
 async def test_stale_restore_cannot_play_test_sound_after_cancel(
     hass: HomeAssistant, env
 ) -> None:
-    """A restore already in flight when cancel fires must not chime or clobber state.
+    """A restore already in flight when cancel fires must never chime.
 
-    Simulates the race: the automatic restore's volume-write is in progress
-    (we hold it open with an Event) when a re-trigger/cancel arrives.
+    Simulates the race: the automatic restore's write of the quiet
+    chime-playback volume is in progress (held open with an Event) when a
+    re-trigger/cancel arrives. Cancel's own restore (``maybe_test_sound``
+    false) writes the real volume directly and is not blocked by this, so it
+    completes immediately; the stale call is then released and must detect it
+    has been superseded before ever calling test_sound.
+
+    Note on the real device volume in this adversarial ordering: because an
+    in-flight HTTP write cannot be cancelled, releasing the stale write here
+    deliberately lets it complete *after* cancel's write, so it can transiently
+    overwrite the device with the quiet volume. What's guaranteed regardless
+    is the *tracked* state: the mute is cleared and the chime never plays.
+    The next coordinator poll (or any subsequent write) reconciles the
+    displayed volume.
     """
     controller, client, speakers, _ = env
-    first_call_started = asyncio.Event()
-    second_call_started = asyncio.Event()
-    release_set_volume = asyncio.Event()
+    quiet_write_started = asyncio.Event()
+    release_quiet_write = asyncio.Event()
     real_set_volume = client.set_volume.side_effect
-    calls = {"n": 0}
 
     async def _blocking_set_volume(speaker_id, volume):
-        if volume == 75:
-            calls["n"] += 1
-            (first_call_started if calls["n"] == 1 else second_call_started).set()
-            await release_set_volume.wait()
+        if volume == 30:  # the quiet test-sound volume
+            quiet_write_started.set()
+            await release_quiet_write.wait()
         return await real_set_volume(speaker_id, volume)
 
     await controller.async_mute(
-        SPEAKER_ID, 60, play_test_sound=True, test_sound_delay=0
+        SPEAKER_ID,
+        60,
+        play_test_sound=True,
+        test_sound_delay=0,
+        test_sound_volume=30,
     )
     client.set_volume.side_effect = _blocking_set_volume
 
-    # Let the timer fire; its restore blocks right after writing volume 75.
+    # Let the timer fire; its restore blocks while writing the quiet volume.
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
-    await first_call_started.wait()
+    await quiet_write_started.wait()
 
-    # A new alarm retriggers while that restore is still in flight; wait for
-    # its own restore write to start (also blocked) before releasing either.
+    # A new alarm retriggers while that write is still in flight. Cancel's own
+    # restore writes the real volume directly (not the quiet one) and is not
+    # blocked, so it runs to completion on its own.
     cancel_task = hass.async_create_task(controller.async_cancel(SPEAKER_ID))
-    await second_call_started.wait()
-
-    release_set_volume.set()
     await cancel_task
+    assert not controller.is_muted(SPEAKER_ID)
+    assert speakers[SPEAKER_ID].volume == 75
+
+    # Now let the stale write resume; it must detect it was superseded and
+    # stop before ever playing the chime.
+    release_quiet_write.set()
     await hass.async_block_till_done()
 
-    # Exactly one restore-to-75 effectively completed; no chime ever played.
     client.test_sound.assert_not_awaited()
     assert not controller.is_muted(SPEAKER_ID)
 

@@ -127,15 +127,24 @@ These are the alarm-disarm mute settings, all configured via the UI:
 | Option | Default | What it does |
 |---|---|---|
 | Restore delay | 600 seconds | How long to stay muted before restoring the saved volume. |
-| Play test sound after volume restore | On | Plays a short confirmation chime once the volume is restored, so you know the mute has ended. |
-| Test sound delay | 2 seconds | Wait after restoring the volume before playing the chime, so the speaker has time to apply the change. |
+| Play test sound after alarm disarmed | On | Plays a short confirmation chime once the mute period ends, so you know it's over. |
+| Test sound delay | 2 seconds | Wait before and after playing the chime, so volume changes have time to apply and the chime has time to actually sound. |
+| Test sound volume | 30% | Volume to use **for the chime only** — independent of the speaker's real/alarm volume, which is restored right after. |
 | Alarm panel for automatic mute | *(none)* | Pick your alarm panel for a fully GUI, no-YAML alarm setup — see [Alarmo setup](#alarmo-setup). |
+
+**Why a separate chime volume:** a speaker mounted for an alarm, doorbell, or
+announcement use may normally run quite loud. Playing the confirmation chime
+at that same volume is startling and defeats the point of muting — so the
+chime always plays at its own, typically much quieter, volume first, and only
+afterward is the real volume restored. Lower **Test sound volume** further for
+speakers in quiet areas, or set **Play test sound** off entirely if you'd
+rather the mute end silently.
 
 These are **global, entry-wide** settings — every speaker on a console shares
 them. If you ever need different behavior for one specific disarm event, the
-`mute_for_alarm_disarm` action/service accepts the same three values
-(`restore_delay`, `play_test_sound`, `test_sound_delay`) as optional per-call
-overrides.
+`mute_for_alarm_disarm` action/service accepts the same four values
+(`restore_delay`, `play_test_sound`, `test_sound_delay`, `test_sound_volume`)
+as optional per-call overrides.
 
 ---
 
@@ -171,7 +180,7 @@ no need to type an entity ID.
 
 | Action | What it does |
 |---|---|
-| `unifi_ai_speaker.mute_for_alarm_disarm` | Save current volume → set 0 → schedule restore. Optional fields: `restore_delay`, `play_test_sound`, `test_sound_delay` (each overrides the integration option for this call only). |
+| `unifi_ai_speaker.mute_for_alarm_disarm` | Save current volume → set 0 → schedule restore. Optional fields: `restore_delay`, `play_test_sound`, `test_sound_delay`, `test_sound_volume` (each overrides the integration option for this call only). |
 | `unifi_ai_speaker.restore_alarm_volume` | Restore the saved volume now and clear the mute. Plays the confirmation chime too, if enabled (same as an automatic restore). |
 | `unifi_ai_speaker.cancel_alarm_mute` | Cancel the pending restore and restore immediately. Never plays the confirmation chime — used for re-arm/re-trigger, when a new alarm needs to be audible right away. |
 
@@ -275,21 +284,35 @@ data:
 1. On disarm, the current volume is read (e.g. `63`) and saved.
 2. Volume is PATCHed to `0` → instant silence.
 3. A one-shot restore is scheduled `restore_delay` seconds later (default 600).
-4. When it fires, volume is PATCHed back to `63`.
-5. If **Play test sound after volume restore** is enabled, the integration
-   waits `test_sound_delay` seconds (default 2) for the speaker to apply the
-   volume change, then calls the speaker's existing test-sound API directly —
-   the same call the **Test sound** button makes, never a simulated button
-   press — and refreshes the coordinator so entities reflect the live state.
+4. When it fires, **if the chime is enabled:**
+   a. Volume is PATCHed to the **Test sound volume** (default 30%) — a
+      separate, typically quiet level, never the speaker's real/alarm volume.
+   b. The integration waits `test_sound_delay` seconds (default 2) for that
+      change to apply, then calls the speaker's existing test-sound API
+      directly — the same call the **Test sound** button makes, never a
+      simulated button press.
+   c. It waits `test_sound_delay` again so the chime actually has time to
+      sound, **then** PATCHes volume to the real saved value (`63`) and
+      refreshes the coordinator.
+   If the chime is **disabled**, step 4 is just a single PATCH straight back
+   to `63` — no detour through the quiet volume.
 
-State (`original_volume`, absolute `restore_deadline`, and the confirmation-chime
-settings in effect) is persisted to Home Assistant storage, so a restart
-mid-mute does **not** leave the speaker stuck at 0 (see
-[Restart behavior](#restart-behavior)).
+This order — quiet volume, then chime, then real volume — is deliberate: a
+confirmation chime played at full alarm/doorbell volume would be as startling
+as the alarm itself, defeating the point of muting.
+
+State (`original_volume`, absolute `restore_deadline`, the confirmation-chime
+settings in effect, and whether the chime has already played) is persisted to
+Home Assistant storage, so a restart mid-mute — or mid-chime — does **not**
+leave the speaker stuck at the wrong volume (see
+[Restart behavior](#restart-behavior)). If the final real-volume write fails
+and retries, the retry resumes at that step only; it never plays the chime a
+second time.
 
 **Manual restore** (the `restore_alarm_volume` action, or ending the mute
 early) plays the confirmation chime too, if enabled — it's treated the same as
-an automatic restore. **Cancel** (re-arm/re-trigger) never plays it, since a
+an automatic restore. **Cancel** (re-arm/re-trigger) never plays it and skips
+the quiet-volume detour entirely, restoring the real volume directly, since a
 new alarm is about to be audible anyway.
 
 ## How re-trigger protection works

@@ -25,10 +25,12 @@ mute_for_alarm_disarm:
           unit_of_measurement: seconds
           mode: box
     play_test_sound:
-      name: Play test sound after restore
+      name: Play test sound after alarm disarmed
       description: >-
-        Play a short confirmation chime once the volume is restored. Omit to
-        use the integration option (default on).
+        Play a short confirmation chime once the mute period ends, so you
+        know it's over. Plays at its own Test sound volume (not the
+        speaker's real/alarm volume) before the real volume is restored.
+        Omit to use the integration option (default on).
       required: false
       example: true
       selector:
@@ -36,9 +38,10 @@ mute_for_alarm_disarm:
     test_sound_delay:
       name: Test sound delay
       description: >-
-        Seconds to wait after restoring the volume before playing the
-        confirmation chime, so the speaker has time to apply the change.
-        Omit to use the integration option (default 2 seconds).
+        Seconds to wait before and after playing the confirmation chime, so
+        the volume change has time to apply and the chime has time to
+        actually sound before the volume changes again. Omit to use the
+        integration option (default 2 seconds).
       required: false
       example: 2
       selector:
@@ -47,6 +50,22 @@ mute_for_alarm_disarm:
           max: 30
           step: 0.5
           unit_of_measurement: seconds
+          mode: box
+    test_sound_volume:
+      name: Test sound volume
+      description: >-
+        Volume to set before playing the confirmation chime (independent of
+        the speaker's real/alarm volume, which is restored afterward). Keep
+        this low for speakers mounted somewhere the chime would otherwise be
+        startling. Omit to use the integration option (default 30).
+      required: false
+      example: 30
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
           mode: box
 
 restore_alarm_volume:

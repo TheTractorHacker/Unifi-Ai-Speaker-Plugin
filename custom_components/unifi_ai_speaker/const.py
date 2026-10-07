@@ -31,13 +31,20 @@ DEFAULT_RESTORE_DELAY: Final = 600  # seconds
 MIN_RESTORE_DELAY: Final = 10
 MAX_RESTORE_DELAY: Final = 3600
 
-# A short confirmation chime after the volume is restored, so a listener
-# knows the alarm mute has ended. On by default; the delay gives the
-# just-applied volume change a moment to take effect on the speaker first.
+# A short confirmation chime once the alarm mute ends, so a listener knows
+# it's over. On by default. The chime plays at its OWN (typically quieter)
+# volume rather than the speaker's real/alarm volume -- a speaker mounted for
+# an alarm, doorbell, or announcement use may normally run quite loud, and the
+# chime is just a notification, not another alarm. Only after the chime plays
+# is the speaker restored to the real saved volume. test_sound_delay is used
+# both before playing it (let the quiet-volume change apply) and after (give
+# the chime time to actually sound before the volume changes again).
+CONF_TEST_SOUND_VOLUME: Final = "test_sound_volume"
 DEFAULT_PLAY_TEST_SOUND: Final = True
 DEFAULT_TEST_SOUND_DELAY: Final = 2  # seconds
 MIN_TEST_SOUND_DELAY: Final = 0
 MAX_TEST_SOUND_DELAY: Final = 30
+DEFAULT_TEST_SOUND_VOLUME: Final = 30  # 0-100, independent of the real volume
 
 # ---------------------------------------------------------------------------
 # API

@@ -30,10 +30,12 @@ from .const import (
     CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
     CONF_TEST_SOUND_DELAY,
+    CONF_TEST_SOUND_VOLUME,
     CONF_VERIFY_SSL,
     DEFAULT_PLAY_TEST_SOUND,
     DEFAULT_RESTORE_DELAY,
     DEFAULT_TEST_SOUND_DELAY,
+    DEFAULT_TEST_SOUND_VOLUME,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     STORAGE_VERSION,
@@ -168,6 +170,9 @@ def _setup_alarm_panel_monitor(
     test_sound_delay = entry.options.get(
         CONF_TEST_SOUND_DELAY, DEFAULT_TEST_SOUND_DELAY
     )
+    test_sound_volume = entry.options.get(
+        CONF_TEST_SOUND_VOLUME, DEFAULT_TEST_SOUND_VOLUME
+    )
 
     @callback
     def _handle(event: Event[EventStateChangedData]) -> None:
@@ -193,6 +198,7 @@ def _setup_alarm_panel_monitor(
                         restore_delay,
                         play_test_sound=play_test_sound,
                         test_sound_delay=test_sound_delay,
+                        test_sound_volume=test_sound_volume,
                     )
                 )
             return

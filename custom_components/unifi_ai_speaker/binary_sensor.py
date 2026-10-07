@@ -81,4 +81,6 @@ class AlarmMuteBinarySensor(UnifiAiSpeakerEntity, BinarySensorEntity):
             ).isoformat(),
             "play_test_sound": state.play_test_sound,
             "test_sound_delay": state.test_sound_delay,
+            "test_sound_volume": state.test_sound_volume,
+            "chime_played": state.chime_played,
         }

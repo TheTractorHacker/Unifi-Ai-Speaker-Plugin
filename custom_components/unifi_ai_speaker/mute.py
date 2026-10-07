@@ -5,26 +5,44 @@ Behaviour
 On *disarm* we remember the speaker's current volume, drop it to 0 so Alarm
 Manager playback is instantly silent, and schedule a restore after a delay
 (default 10 minutes, long enough for the ~5 minute repeated alarm clip to end).
-Optionally, once the volume is restored, a short confirmation chime (the
-speaker's existing test-sound) is played so a listener knows the mute period
-has ended.
+
+Optionally, once the mute period ends, a short confirmation chime (the
+speaker's existing test-sound) plays so a listener knows it's over — at its
+OWN configurable volume, not the speaker's real/alarm volume. A speaker
+mounted for an alarm, doorbell, or announcement use may normally run quite
+loud, and a confirmation chime blasted at that volume is startling and
+defeats the point of muting in the first place. So the sequence is:
+
+    mute (volume 0) -> wait restore_delay -> set quiet test_sound_volume
+    -> wait test_sound_delay -> play chime -> wait test_sound_delay
+    -> restore the REAL saved volume -> refresh coordinator
+
+If the chime is disabled, the saved volume is restored directly with no
+detour through the quiet volume.
 
 Guarantees
 ----------
 * **No original-volume corruption.** A second disarm while already muted keeps
   the first saved volume (it never saves the current ``0``); it only re-extends
-  the restore deadline (and refreshes the test-sound settings for this entry).
+  the restore deadline and refreshes the test-sound settings for this entry.
 * **Re-trigger safety.** ``cancel`` (called when the alarm re-arms/re-triggers)
   cancels the pending restore and restores the real volume immediately so the
-  new alarm is audible. No stale timer can later touch the volume, and a
-  restore already in flight when ``cancel`` is called is invalidated via a
-  per-speaker generation token so it can never play a confirmation chime (or
-  clobber newer state) after the fact. See ``_async_do_restore``.
-* **Restart recovery.** Mute state (original volume + absolute restore
-  deadline + the test-sound settings in effect at mute time) is persisted. On
-  startup an overdue mute is restored immediately and a still-pending mute is
-  re-scheduled for its remaining time; the confirmation chime still plays at
-  most once if it was enabled and hasn't played yet.
+  new alarm is audible — skipping the chime detour entirely. No stale timer
+  can later touch the volume, and a restore already in flight when ``cancel``
+  is called is invalidated via a per-speaker generation token so it can never
+  play the chime (or clobber newer state) after the fact. See
+  ``_async_do_restore``. As a further guard, if a repeated disarm arrives
+  while a stale restore had already nudged the volume to the quiet
+  chime-playback level before being invalidated, the extend path re-asserts
+  silence (volume 0) immediately.
+* **Resumable chime sequence.** Whether the chime already played is persisted
+  per mute (``chime_played``), so if the final restore-to-real-volume step
+  fails and is retried (e.g. the console was briefly unreachable), the retry
+  resumes at the right point instead of playing the chime a second time.
+* **Restart recovery.** Mute state (original volume, absolute restore
+  deadline, the test-sound settings in effect at mute time, and whether the
+  chime already played) is persisted. On startup an overdue mute is restored
+  immediately and a still-pending mute is re-scheduled for its remaining time.
 
 All volume reads/writes go through the coordinator's API client. The
 confirmation chime uses the API client's existing ``test_sound`` method
@@ -46,7 +64,13 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .api import UnifiAiSpeakerError, UnifiConnectionError
-from .const import DEFAULT_PLAY_TEST_SOUND, DEFAULT_TEST_SOUND_DELAY
+from .const import (
+    DEFAULT_PLAY_TEST_SOUND,
+    DEFAULT_TEST_SOUND_DELAY,
+    DEFAULT_TEST_SOUND_VOLUME,
+    VOLUME_MAX,
+    VOLUME_MIN,
+)
 from .coordinator import UnifiAiSpeakerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -60,10 +84,12 @@ _RESTORE_RETRY_SECONDS = 60
 class MuteState:
     """Persisted mute state for a single speaker.
 
-    ``play_test_sound``/``test_sound_delay`` capture the settings in effect at
-    mute time (or at the most recent repeated disarm), so a later restore —
-    even after a Home Assistant restart — honours them without needing the
-    original caller's options again.
+    ``play_test_sound``/``test_sound_delay``/``test_sound_volume`` capture the
+    settings in effect at mute time (or at the most recent repeated disarm),
+    so a later restore — even after a Home Assistant restart — honours them
+    without needing the original caller's options again. ``chime_played``
+    tracks progress through the chime sequence so a retried restore never
+    plays the chime twice.
     """
 
     original_volume: int
@@ -71,6 +97,8 @@ class MuteState:
     restore_delay: int  # seconds, for diagnostics
     play_test_sound: bool = DEFAULT_PLAY_TEST_SOUND
     test_sound_delay: float = DEFAULT_TEST_SOUND_DELAY
+    test_sound_volume: int = DEFAULT_TEST_SOUND_VOLUME
+    chime_played: bool = False
 
 
 class AlarmMuteController:
@@ -127,6 +155,10 @@ class AlarmMuteController:
                     test_sound_delay=float(
                         raw.get("test_sound_delay", DEFAULT_TEST_SOUND_DELAY)
                     ),
+                    test_sound_volume=int(
+                        raw.get("test_sound_volume", DEFAULT_TEST_SOUND_VOLUME)
+                    ),
+                    chime_played=bool(raw.get("chime_played", False)),
                 )
             except (KeyError, TypeError, ValueError):
                 _LOGGER.warning("Discarding corrupt mute state for %s", speaker_id)
@@ -169,6 +201,7 @@ class AlarmMuteController:
         *,
         play_test_sound: bool = False,
         test_sound_delay: float = DEFAULT_TEST_SOUND_DELAY,
+        test_sound_volume: int = DEFAULT_TEST_SOUND_VOLUME,
     ) -> None:
         """Mute a speaker for the alarm-disarm window.
 
@@ -197,7 +230,25 @@ class AlarmMuteController:
             existing.restore_delay = restore_delay
             existing.play_test_sound = play_test_sound
             existing.test_sound_delay = test_sound_delay
+            existing.test_sound_volume = test_sound_volume
+            existing.chime_played = False  # this extend starts a fresh cycle
             self._schedule(speaker_id, deadline)
+
+            # A just-invalidated stale restore may have already nudged the
+            # volume to the quiet chime-playback level before noticing the
+            # generation bump above. Re-assert silence now so the extended
+            # mute period is actually silent.
+            current = (self._coordinator.data or {}).get(speaker_id)
+            if current is not None and current.volume != 0:
+                try:
+                    updated = await self._coordinator.client.set_volume(
+                        speaker_id, 0
+                    )
+                except UnifiAiSpeakerError:
+                    pass  # best-effort; the next restore attempt reconciles
+                else:
+                    self._coordinator.update_speaker(updated)
+
             await self._async_persist()
             return
 
@@ -217,6 +268,7 @@ class AlarmMuteController:
             restore_delay=restore_delay,
             play_test_sound=play_test_sound,
             test_sound_delay=test_sound_delay,
+            test_sound_volume=test_sound_volume,
         )
         self._schedule(speaker_id, deadline)
         await self._async_persist()
@@ -233,7 +285,8 @@ class AlarmMuteController:
 
         This is a user-requested early end to the mute, so it is treated the
         same as the automatic restore for confirmation-chime purposes: if the
-        option is enabled, the chime plays once restoration completes.
+        option is enabled, the chime plays (at its own volume) before the
+        real volume is restored.
         """
         if speaker_id not in self._states:
             _LOGGER.debug("Restore requested for %s but it is not muted", speaker_id)
@@ -250,9 +303,10 @@ class AlarmMuteController:
 
         Semantically identical to :meth:`async_restore` but named for the
         alarm-re-armed / re-triggered case: the pending timer is cancelled and
-        the true volume is restored at once so the new alarm is audible. The
-        confirmation chime never plays on this path, even if a restore from
-        the mute that's being cancelled is already in flight.
+        the true volume is restored at once so the new alarm is audible,
+        skipping the chime detour entirely. The confirmation chime never
+        plays on this path, even if a restore from the mute that's being
+        cancelled is already in flight.
         """
         if speaker_id not in self._states:
             return
@@ -282,74 +336,106 @@ class AlarmMuteController:
         live = await self._coordinator.client.get_speaker(speaker_id)
         return live.volume
 
+    async def _async_set_volume(
+        self, speaker_id: str, volume: int
+    ) -> Any | None:
+        """Write a volume, clamped to the valid range. Raises on failure."""
+        clamped = max(VOLUME_MIN, min(VOLUME_MAX, int(volume)))
+        updated = await self._coordinator.client.set_volume(speaker_id, clamped)
+        self._coordinator.update_speaker(updated)
+        return updated
+
     async def _async_do_restore(
         self, speaker_id: str, *, reason: str, maybe_test_sound: bool
     ) -> None:
-        """Write the saved volume back and, if appropriate, play one chime.
+        """Run (or resume) the restore sequence for one mute.
 
-        ``maybe_test_sound`` says whether this call path is eligible at all
-        for the confirmation chime (true for a normal/manual/startup restore,
-        false for a cancel/re-trigger restore) — the final decision also
-        depends on the per-mute ``play_test_sound`` option and a generation
-        check so a superseded restore can never play it.
+        Without a chime: write the saved volume back, done. With a chime
+        (``maybe_test_sound`` true, the per-mute option on, and it hasn't
+        played yet): set the quiet ``test_sound_volume`` first, play the
+        chime, then write the real saved volume back — never the reverse,
+        so the chime is never heard at the speaker's real/alarm volume.
 
-        On a transient volume-restore failure, state is kept and a retry is
-        scheduled; the persisted deadline still protects against a lost
+        A generation check after every awaited step detects a newer
+        mute/restore/cancel that has superseded this one; this call then
+        stops immediately, touching neither the chime nor the final state,
+        leaving the newer action to own the outcome.
+
+        On a transient volume-write failure at any step, state is kept
+        (including ``chime_played`` so a retry never re-plays it) and a retry
+        is scheduled; the persisted deadline still protects against a lost
         restore across restarts. A confirmation-chime failure is logged but
-        never fails the restore — the volume was already corrected.
+        never prevents the final restore to the real volume.
         """
         state = self._states.get(speaker_id)
         if state is None:
             return
         generation = self._generations.get(speaker_id, 0)
 
+        play_chime = (
+            maybe_test_sound and state.play_test_sound and not state.chime_played
+        )
+        first_target = (
+            state.test_sound_volume if play_chime else state.original_volume
+        )
+
         try:
-            updated = await self._coordinator.client.set_volume(
-                speaker_id, state.original_volume
-            )
+            await self._async_set_volume(speaker_id, first_target)
         except UnifiConnectionError:
-            _LOGGER.warning(
-                "Could not restore speaker %s volume yet (%s); retrying in %ss",
-                speaker_id,
-                reason,
-                _RESTORE_RETRY_SECONDS,
-            )
-            retry_at = dt_util.utcnow().timestamp() + _RESTORE_RETRY_SECONDS
-            self._schedule(speaker_id, retry_at)
+            self._schedule_retry(speaker_id, reason, maybe_test_sound=maybe_test_sound)
             return
         except UnifiAiSpeakerError as err:
-            # Non-transient (e.g. speaker removed) — give up and clear state.
-            _LOGGER.error(
-                "Giving up restoring speaker %s volume (%s): %s",
-                speaker_id,
-                reason,
-                err,
-            )
-            if self._generations.get(speaker_id, 0) == generation:
-                self._states.pop(speaker_id, None)
-                self._notify()
-            return
-        else:
-            self._coordinator.update_speaker(updated)
-
-        # A newer mute/restore/cancel started while the volume write above
-        # was in flight: that newer action owns the final state and chime
-        # decision now, so this stale call must stop here.
-        if self._generations.get(speaker_id, 0) != generation:
-            _LOGGER.debug(
-                "Restore for speaker %s (%s) superseded; not finishing it",
-                speaker_id,
-                reason,
-            )
+            self._give_up(speaker_id, generation, reason, err)
             return
 
-        if maybe_test_sound and state.play_test_sound:
-            await self._async_play_confirmation_chime(
-                speaker_id, state.test_sound_delay, generation
-            )
-
-        if self._generations.get(speaker_id, 0) != generation:
+        if self._superseded(speaker_id, generation, reason):
             return
+
+        if play_chime:
+            if state.test_sound_delay > 0:
+                await asyncio.sleep(state.test_sound_delay)
+            if self._superseded(speaker_id, generation, reason):
+                return
+
+            try:
+                await self._coordinator.client.test_sound(speaker_id)
+            except UnifiAiSpeakerError as err:
+                _LOGGER.warning(
+                    "Post-restore confirmation chime failed for speaker %s: %s",
+                    speaker_id,
+                    err,
+                )
+            else:
+                state.chime_played = True
+                await self._async_persist()
+
+            if self._superseded(speaker_id, generation, reason):
+                return
+
+            if state.test_sound_delay > 0:
+                await asyncio.sleep(state.test_sound_delay)
+            if self._superseded(speaker_id, generation, reason):
+                return
+
+            try:
+                await self._async_set_volume(speaker_id, state.original_volume)
+            except UnifiConnectionError:
+                # chime_played is already True, so the retry resumes straight
+                # at this final write and never replays the chime.
+                self._schedule_retry(
+                    speaker_id, reason, maybe_test_sound=maybe_test_sound
+                )
+                return
+            except UnifiAiSpeakerError as err:
+                self._give_up(speaker_id, generation, reason, err)
+                return
+
+            if self._superseded(speaker_id, generation, reason):
+                return
+
+            await self._coordinator.async_refresh()
+            if self._superseded(speaker_id, generation, reason):
+                return
 
         self._states.pop(speaker_id, None)
         _LOGGER.info(
@@ -360,46 +446,57 @@ class AlarmMuteController:
         )
         self._notify()
 
-    async def _async_play_confirmation_chime(
-        self, speaker_id: str, test_sound_delay: float, generation: int
+    def _superseded(self, speaker_id: str, generation: int, reason: str) -> bool:
+        """Return whether a newer action has taken over since ``generation``."""
+        if self._generations.get(speaker_id, 0) == generation:
+            return False
+        _LOGGER.debug(
+            "Restore for speaker %s (%s) superseded; not finishing it",
+            speaker_id,
+            reason,
+        )
+        return True
+
+    def _schedule_retry(
+        self, speaker_id: str, reason: str, *, maybe_test_sound: bool
     ) -> None:
-        """Wait for the volume change to apply, then play the test sound.
+        """Schedule a retry after a transient (connection) write failure.
 
-        Uses the API client's existing ``test_sound`` method directly (never
-        a simulated button press). A failure here is logged and swallowed —
-        the volume restore already succeeded and must not be undone or
-        retried just because the confirmation chime failed.
+        Preserves the *original* call's chime eligibility across the retry —
+        a cancelled/re-trigger restore (``maybe_test_sound=False``) must keep
+        retrying as such and never become chime-eligible just because it's
+        now running from the generic retry timer.
         """
-        if test_sound_delay > 0:
-            await asyncio.sleep(test_sound_delay)
+        _LOGGER.warning(
+            "Could not update speaker %s volume yet (%s); retrying in %ss",
+            speaker_id,
+            reason,
+            _RESTORE_RETRY_SECONDS,
+        )
+        retry_at = dt_util.utcnow().timestamp() + _RESTORE_RETRY_SECONDS
+        self._schedule(speaker_id, retry_at, maybe_test_sound=maybe_test_sound)
 
-        # Re-check after the sleep: a cancel/new mute may have superseded us.
-        if self._generations.get(speaker_id, 0) != generation:
-            return
+    def _give_up(
+        self, speaker_id: str, generation: int, reason: str, err: Exception
+    ) -> None:
+        """Non-transient failure (e.g. speaker removed): clear state and stop."""
+        _LOGGER.error(
+            "Giving up restoring speaker %s volume (%s): %s", speaker_id, reason, err
+        )
+        if self._generations.get(speaker_id, 0) == generation:
+            self._states.pop(speaker_id, None)
+            self._notify()
 
-        try:
-            await self._coordinator.client.test_sound(speaker_id)
-        except UnifiAiSpeakerError as err:
-            _LOGGER.warning(
-                "Post-restore confirmation chime failed for speaker %s: %s",
-                speaker_id,
-                err,
-            )
-            return
-
-        if self._generations.get(speaker_id, 0) != generation:
-            return
-
-        await self._coordinator.async_refresh()
-
-    def _schedule(self, speaker_id: str, deadline: float) -> None:
+    def _schedule(
+        self, speaker_id: str, deadline: float, *, maybe_test_sound: bool = True
+    ) -> None:
         """(Re)schedule a one-shot restore at an absolute UTC deadline."""
         self._cancel_timer(speaker_id)
 
         async def _fire(_now: Any) -> None:
             self._timers.pop(speaker_id, None)
             await self._async_do_restore(
-                speaker_id, reason="timer expired", maybe_test_sound=True
+                speaker_id, reason="timer expired", maybe_test_sound=maybe_test_sound
             )
             await self._async_persist()
 
