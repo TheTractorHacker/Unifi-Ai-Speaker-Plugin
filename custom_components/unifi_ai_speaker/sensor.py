@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -12,12 +13,14 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import UnifiAiSpeakerConfigEntry
 from .api import Speaker
 from .coordinator import UnifiAiSpeakerCoordinator
 from .entity import UnifiAiSpeakerEntity
+
+if TYPE_CHECKING:
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import UnifiAiSpeakerConfigEntry
 from .coordinator import UnifiAiSpeakerCoordinator
 from .entity import UnifiAiSpeakerEntity
 from .mute import AlarmMuteController
+
+if TYPE_CHECKING:
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 DESCRIPTION = BinarySensorEntityDescription(
     key="alarm_mute_active",

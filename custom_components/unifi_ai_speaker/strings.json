@@ -20,17 +20,33 @@
         "data": {
           "api_key": "API key"
         }
+      },
+      "reconfigure": {
+        "title": "Edit UniFi AI Speaker",
+        "description": "Update the console connection used by this integration.",
+        "data": {
+          "host": "Host or console IP",
+          "api_key": "API key",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "host": "Example: 10.1.0.29 (scheme and path are added automatically).",
+          "api_key": "Leave blank to keep the currently stored API key.",
+          "verify_ssl": "UniFi Protect consoles use a self-signed certificate on the LAN, so this is usually off."
+        }
       }
     },
     "error": {
       "cannot_connect": "Could not reach the console. Check the host and that the Integration API is enabled.",
       "invalid_auth": "The API key was rejected. Check the key and its permissions.",
       "no_speakers": "Connected successfully, but no AI Speakers were found on this console.",
+      "already_configured": "Another UniFi AI Speaker entry already uses this console.",
       "unknown": "An unexpected error occurred."
     },
     "abort": {
       "already_configured": "This console is already configured.",
-      "reauth_successful": "Re-authentication was successful."
+      "reauth_successful": "Re-authentication was successful.",
+      "reconfigure_successful": "The connection settings were updated."
     }
   },
   "options": {

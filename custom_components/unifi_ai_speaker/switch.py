@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import UnifiAiSpeakerConfigEntry
 from .api import UnifiAiSpeakerError
 from .coordinator import UnifiAiSpeakerCoordinator
 from .entity import UnifiAiSpeakerEntity
+
+if TYPE_CHECKING:
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 MIC_DESCRIPTION = SwitchEntityDescription(
     key="mic_enabled",

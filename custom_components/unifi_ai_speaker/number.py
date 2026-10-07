@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from homeassistant.components.number import (
     NumberEntity,
@@ -13,13 +14,15 @@ from homeassistant.components.number import (
 from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import UnifiAiSpeakerConfigEntry
 from .api import Speaker, UnifiAiSpeakerApiClient, UnifiAiSpeakerError
 from .const import VOLUME_MAX, VOLUME_MIN
 from .coordinator import UnifiAiSpeakerCoordinator
 from .entity import UnifiAiSpeakerEntity
+
+if TYPE_CHECKING:
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 
 @dataclass(frozen=True, kw_only=True)

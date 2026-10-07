@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import UnifiAiSpeakerConfigEntry
 from .api import UnifiAiSpeakerError
 from .coordinator import UnifiAiSpeakerCoordinator
 from .entity import UnifiAiSpeakerEntity
+
+if TYPE_CHECKING:
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 DESCRIPTION = ButtonEntityDescription(
     key="test_sound",

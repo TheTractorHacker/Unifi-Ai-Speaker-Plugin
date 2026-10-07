@@ -173,6 +173,81 @@ class UnifiAiSpeakerConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Let the user edit host / API key / Verify SSL from the UI.
+
+        Reached via the config entry's ⋮ menu → Reconfigure. The API key
+        field is optional: leave it blank to keep the currently stored key.
+        """
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        assert entry is not None
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            host = normalize_host(user_input[CONF_HOST])
+            api_key = user_input.get(CONF_API_KEY) or entry.data[CONF_API_KEY]
+            verify_ssl = user_input[CONF_VERIFY_SSL]
+
+            duplicate = any(
+                other.entry_id != entry.entry_id
+                and normalize_host(other.data.get(CONF_HOST, "")) == host
+                for other in self.hass.config_entries.async_entries(DOMAIN)
+            )
+            if duplicate:
+                errors["base"] = "already_configured"
+            else:
+                try:
+                    count = await _validate(self.hass, host, api_key, verify_ssl)
+                except UnifiAuthError:
+                    errors["base"] = "invalid_auth"
+                except UnifiConnectionError:
+                    errors["base"] = "cannot_connect"
+                except Exception:  # noqa: BLE001
+                    _LOGGER.exception(
+                        "Unexpected error validating UniFi AI Speaker"
+                    )
+                    errors["base"] = "unknown"
+                else:
+                    if count == 0:
+                        errors["base"] = "no_speakers"
+                    else:
+                        self.hass.config_entries.async_update_entry(
+                            entry,
+                            unique_id=host,
+                            title=f"UniFi AI Speaker ({host})",
+                            data={
+                                CONF_HOST: host,
+                                CONF_API_KEY: api_key,
+                                CONF_VERIFY_SSL: verify_ssl,
+                            },
+                        )
+                        await self.hass.config_entries.async_reload(
+                            entry.entry_id
+                        )
+                        return self.async_abort(reason="reconfigure_successful")
+
+        current = entry.data
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_HOST, default=current[CONF_HOST]
+                    ): TextSelector(TextSelectorConfig(type=TextSelectorType.TEXT)),
+                    vol.Optional(CONF_API_KEY): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                    vol.Required(
+                        CONF_VERIFY_SSL,
+                        default=current.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+                    ): BooleanSelector(),
+                }
+            ),
+            errors=errors,
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(

@@ -17,12 +17,12 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
+from homeassistant.const import ATTR_AREA_ID, ATTR_DEVICE_ID, ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.service import async_extract_referenced_entity_ids
 
 from .const import (
     ATTR_RESTORE_DELAY,
@@ -53,20 +53,42 @@ _TARGET_ONLY_SCHEMA = cv.make_entity_service_schema({})
 def _resolve_targets(
     hass: HomeAssistant, call: ServiceCall
 ) -> list[tuple[object, str]]:
-    """Return ``(runtime_data, speaker_id)`` pairs referenced by the call."""
-    selected = async_extract_referenced_entity_ids(hass, call)
-    entity_ids = selected.referenced | selected.indirectly_referenced
+    """Return ``(runtime_data, speaker_id)`` pairs referenced by the call.
 
+    Resolves the entity_id/device_id/area_id target selector by reading the
+    entity and device registries directly, rather than relying on a generic
+    HA service-target helper (whose name/location has changed between HA
+    versions). The registry ``.entities``/``.devices`` mappings and
+    ``RegistryEntry``/``DeviceEntry`` attributes used here are part of the
+    long-stable registry data model.
+    """
     ent_reg = er.async_get(hass)
     dev_reg = dr.async_get(hass)
+
+    entity_ids: set[str] = set(cv.ensure_list(call.data.get(ATTR_ENTITY_ID) or []))
+    device_ids: set[str] = set(cv.ensure_list(call.data.get(ATTR_DEVICE_ID) or []))
+    area_ids: set[str] = set(cv.ensure_list(call.data.get(ATTR_AREA_ID) or []))
+
+    if area_ids:
+        for device in dev_reg.devices.values():
+            if device.area_id in area_ids:
+                device_ids.add(device.id)
+        for entity in ent_reg.entities.values():
+            if entity.area_id in area_ids:
+                entity_ids.add(entity.entity_id)
+
+    if device_ids:
+        for entity in ent_reg.entities.values():
+            if entity.device_id in device_ids:
+                entity_ids.add(entity.entity_id)
 
     # speaker_id -> entry_id, collected from targeted entities' devices.
     speaker_to_entry: dict[str, str] = {}
     for entity_id in entity_ids:
-        entity = ent_reg.async_get(entity_id)
+        entity = ent_reg.entities.get(entity_id)
         if entity is None or entity.platform != DOMAIN or entity.device_id is None:
             continue
-        device = dev_reg.async_get(entity.device_id)
+        device = dev_reg.devices.get(entity.device_id)
         if device is None:
             continue
         for domain, identifier in device.identifiers:
