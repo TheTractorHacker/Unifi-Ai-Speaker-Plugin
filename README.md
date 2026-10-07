@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="brands/logo-wide.png" alt="UniFi AI Speaker" width="380">
+</p>
+
 # UniFi AI Speaker (Home Assistant custom integration)
 
 Speaker-only control of the **UniFi AI Speaker / AI Horn Speaker** through the
@@ -249,3 +253,26 @@ Base: `https://<console>/proxy/protect/integration/v1`
 Alarm-Manager "is running / stop" endpoint in the current API; the alarm trigger
 webhook (`POST /alarm-manager/webhook/{id}`) is handled by your existing
 `rest_command`, not by this integration.
+
+---
+
+## Logo / Home Assistant brands
+
+Brand assets live in [`brands/`](brands/): `logo.svg` (source), `icon.png`
+(256×256), `icon@2x.png` (512×512), `logo.png` / `logo@2x.png`, and
+`logo-wide.png` (README lockup).
+
+Home Assistant and HACS only render an integration's logo when the images are
+present in the [`home-assistant/brands`](https://github.com/home-assistant/brands)
+repository, keyed by the integration domain. To make the logo appear in the HA
+UI, open a PR adding these files there:
+
+```
+custom_integrations/unifi_ai_speaker/icon.png      (256x256)
+custom_integrations/unifi_ai_speaker/icon@2x.png   (512x512)
+custom_integrations/unifi_ai_speaker/logo.png      (optional)
+custom_integrations/unifi_ai_speaker/logo@2x.png   (optional)
+```
+
+Until that PR is merged, the integration still works — it just shows the default
+Home Assistant icon.

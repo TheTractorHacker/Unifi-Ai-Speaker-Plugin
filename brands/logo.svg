@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="UniFi AI Speaker">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2678F6"/>
+      <stop offset="1" stop-color="#053CB4"/>
+    </linearGradient>
+  </defs>
+  <rect x="14" y="14" width="228" height="228" rx="60" fill="url(#g)"/>
+  <g fill="#fff">
+    <rect x="70" y="112" width="27" height="32" rx="4"/>
+    <polygon points="95,114 132,86 132,170 95,142"/>
+  </g>
+  <g fill="none" stroke="#fff" stroke-linecap="round">
+    <path d="M153.3 105.3 A34 34 0 0 1 153.3 150.7" stroke-width="11"/>
+    <path d="M169.6 90.5 A56 56 0 0 1 169.6 165.5" stroke-width="10"/>
+    <path d="M185.9 75.8 A78 78 0 0 1 185.9 180.2" stroke-width="9"/>
+  </g>
+</svg>
