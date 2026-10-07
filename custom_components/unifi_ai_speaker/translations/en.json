@@ -1,0 +1,113 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "UniFi AI Speaker",
+        "description": "Connect to your UniFi Protect console's local Integration API. Create an API key in Protect under Settings → Control Plane → Integrations.",
+        "data": {
+          "host": "Host or console IP",
+          "api_key": "API key",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "host": "Example: 10.1.0.29 (scheme and path are added automatically).",
+          "verify_ssl": "UniFi Protect consoles use a self-signed certificate on the LAN, so this is usually off. Leaving it off skips TLS verification for this console only; enable it if your console presents a trusted certificate."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate UniFi AI Speaker",
+        "description": "The stored API key was rejected. Enter a new API key for this console.",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the console. Check the host and that the Integration API is enabled.",
+      "invalid_auth": "The API key was rejected. Check the key and its permissions.",
+      "no_speakers": "Connected successfully, but no AI Speakers were found on this console.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This console is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UniFi AI Speaker options",
+        "data": {
+          "restore_delay": "Alarm mute restore delay",
+          "alarm_panel": "Alarm panel to monitor (optional)"
+        },
+        "data_description": {
+          "restore_delay": "How long after a disarm-mute to restore the saved volume. Default 600 seconds (10 minutes).",
+          "alarm_panel": "Optional. If set, any mute is cancelled automatically when this alarm panel leaves the disarmed state (re-arm or re-trigger). Leave empty to keep the integration decoupled and drive it only via service calls."
+        }
+      }
+    }
+  },
+  "entity": {
+    "number": {
+      "volume": { "name": "Volume" },
+      "mic_volume": { "name": "Microphone volume" }
+    },
+    "switch": {
+      "mic_enabled": { "name": "Microphone" }
+    },
+    "sensor": {
+      "speaker_status": {
+        "name": "Status",
+        "state": {
+          "idle": "Idle",
+          "streaming": "Streaming",
+          "playing": "Playing",
+          "tts_playing": "Playing speech",
+          "uploading": "Uploading"
+        }
+      },
+      "connection_state": {
+        "name": "Connection",
+        "state": {
+          "CONNECTED": "Connected",
+          "CONNECTING": "Connecting",
+          "DISCONNECTED": "Disconnected"
+        }
+      },
+      "speaker_mode": {
+        "name": "Mode",
+        "state": {
+          "listen": "Listen",
+          "talk": "Talk"
+        }
+      }
+    },
+    "binary_sensor": {
+      "alarm_mute_active": { "name": "Alarm mute active" }
+    },
+    "button": {
+      "test_sound": { "name": "Test sound" }
+    }
+  },
+  "services": {
+    "mute_for_alarm_disarm": {
+      "name": "Mute for alarm disarm",
+      "description": "Save the speaker's current volume, set it to 0 so UniFi Alarm Manager playback is instantly silent, and schedule a restore after a delay (default 10 minutes).",
+      "fields": {
+        "restore_delay": {
+          "name": "Restore delay",
+          "description": "Seconds to wait before restoring the saved volume. Omit to use the integration option (default 600 seconds)."
+        }
+      }
+    },
+    "restore_alarm_volume": {
+      "name": "Restore alarm volume",
+      "description": "Immediately restore the speaker's saved volume and clear the alarm mute."
+    },
+    "cancel_alarm_mute": {
+      "name": "Cancel alarm mute",
+      "description": "Cancel a pending restore and restore the saved volume at once. Use when the alarm re-arms or re-triggers."
+    }
+  }
+}

@@ -1,0 +1,48 @@
+mute_for_alarm_disarm:
+  name: Mute for alarm disarm
+  description: >-
+    Save the speaker's current volume, set it to 0 so UniFi Alarm Manager
+    playback is instantly silent, and schedule a restore of the saved volume
+    after a delay (default 10 minutes).
+  target:
+    entity:
+      integration: unifi_ai_speaker
+    device:
+      integration: unifi_ai_speaker
+  fields:
+    restore_delay:
+      name: Restore delay
+      description: >-
+        Seconds to wait before restoring the saved volume. Omit to use the
+        integration option (default 600 seconds / 10 minutes).
+      required: false
+      example: 600
+      selector:
+        number:
+          min: 10
+          max: 3600
+          step: 1
+          unit_of_measurement: seconds
+          mode: box
+
+restore_alarm_volume:
+  name: Restore alarm volume
+  description: >-
+    Immediately restore the speaker's saved volume and clear the alarm mute
+    (ends the mute early).
+  target:
+    entity:
+      integration: unifi_ai_speaker
+    device:
+      integration: unifi_ai_speaker
+
+cancel_alarm_mute:
+  name: Cancel alarm mute
+  description: >-
+    Cancel a pending restore and restore the saved volume at once. Call this
+    when the alarm re-arms or re-triggers so a new alarm is audible.
+  target:
+    entity:
+      integration: unifi_ai_speaker
+    device:
+      integration: unifi_ai_speaker

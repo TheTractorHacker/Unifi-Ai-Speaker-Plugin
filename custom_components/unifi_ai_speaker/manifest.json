@@ -1,0 +1,13 @@
+{
+  "domain": "unifi_ai_speaker",
+  "name": "UniFi AI Speaker",
+  "version": "1.0.0",
+  "documentation": "https://github.com/TheTractorHacker/Unifi-Ai-Speaker-Plugin",
+  "issue_tracker": "https://github.com/TheTractorHacker/Unifi-Ai-Speaker-Plugin/issues",
+  "codeowners": ["@TheTractorHacker"],
+  "config_flow": true,
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "dependencies": [],
+  "requirements": []
+}

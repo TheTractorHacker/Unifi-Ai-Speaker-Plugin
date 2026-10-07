@@ -1,0 +1,6 @@
+{
+  "name": "UniFi AI Speaker",
+  "render_readme": true,
+  "homeassistant": "2024.8.0",
+  "content_in_root": false
+}
