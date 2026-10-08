@@ -12,6 +12,10 @@ from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from custom_components.unifi_ai_speaker.api import Speaker, UnifiConnectionError
+from custom_components.unifi_ai_speaker.const import DOMAIN, STORAGE_VERSION
+from custom_components.unifi_ai_speaker.coordinator import UnifiAiSpeakerCoordinator
+from custom_components.unifi_ai_speaker.mute import AlarmMuteController
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
@@ -19,11 +23,6 @@ from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
 )
-
-from custom_components.unifi_ai_speaker.api import Speaker, UnifiConnectionError
-from custom_components.unifi_ai_speaker.const import DOMAIN, STORAGE_VERSION
-from custom_components.unifi_ai_speaker.coordinator import UnifiAiSpeakerCoordinator
-from custom_components.unifi_ai_speaker.mute import AlarmMuteController
 
 from .const import SPEAKER_NO_MIC, SPEAKER_WITH_MIC
 

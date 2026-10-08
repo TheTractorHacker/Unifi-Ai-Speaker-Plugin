@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import pytest
-from homeassistant.config_entries import ConfigEntryState
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
-
 from custom_components.unifi_ai_speaker.api import Speaker, UnifiConnectionError
 from custom_components.unifi_ai_speaker.const import (
+    CONF_ALARM_WEBHOOK_ID,
     DOMAIN,
     SERVICE_CANCEL_ALARM_MUTE,
     SERVICE_MUTE_FOR_ALARM_DISARM,
+    SERVICE_TRIGGER_ALARM,
 )
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .const import SPEAKER_NO_MIC, SPEAKER_WITH_MIC
 
@@ -130,9 +131,10 @@ async def test_speaker_offline_marks_volume_unavailable(
 
 
 async def test_services_registered(hass: HomeAssistant, setup_integration) -> None:
-    """All three alarm services are registered."""
+    """All four alarm services are registered."""
     assert hass.services.has_service(DOMAIN, SERVICE_MUTE_FOR_ALARM_DISARM)
     assert hass.services.has_service(DOMAIN, SERVICE_CANCEL_ALARM_MUTE)
+    assert hass.services.has_service(DOMAIN, SERVICE_TRIGGER_ALARM)
 
 
 async def test_mute_service_targets_device(
@@ -180,6 +182,73 @@ async def test_mute_service_targets_entity(
     await hass.services.async_call(
         DOMAIN, SERVICE_CANCEL_ALARM_MUTE, {"entity_id": entity_id}, blocking=True
     )
+
+
+async def test_trigger_alarm_uses_configured_webhook_id(
+    hass: HomeAssistant, setup_integration, mock_api
+) -> None:
+    """trigger_alarm posts using the webhook ID configured in Options."""
+    hass.config_entries.async_update_entry(
+        setup_integration,
+        options={CONF_ALARM_WEBHOOK_ID: "configured-webhook-guid"},
+    )
+    await hass.async_block_till_done()
+    entity_id = _entity_id(hass, f"{MIC_ID}_volume")
+    await hass.services.async_call(
+        DOMAIN, SERVICE_TRIGGER_ALARM, {"entity_id": entity_id}, blocking=True
+    )
+    mock_api.trigger_alarm_webhook.assert_awaited_once_with("configured-webhook-guid")
+
+
+async def test_trigger_alarm_call_data_overrides_option(
+    hass: HomeAssistant, setup_integration, mock_api
+) -> None:
+    """An explicit webhook_id field overrides the configured option."""
+    hass.config_entries.async_update_entry(
+        setup_integration,
+        options={CONF_ALARM_WEBHOOK_ID: "configured-webhook-guid"},
+    )
+    await hass.async_block_till_done()
+    entity_id = _entity_id(hass, f"{MIC_ID}_volume")
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_TRIGGER_ALARM,
+        {"entity_id": entity_id, "webhook_id": "override-guid"},
+        blocking=True,
+    )
+    mock_api.trigger_alarm_webhook.assert_awaited_once_with("override-guid")
+
+
+async def test_trigger_alarm_without_webhook_id_raises(
+    hass: HomeAssistant, setup_integration, mock_api
+) -> None:
+    """No configured option and no override raises a clear validation error."""
+    entity_id = _entity_id(hass, f"{MIC_ID}_volume")
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, SERVICE_TRIGGER_ALARM, {"entity_id": entity_id}, blocking=True
+        )
+    mock_api.trigger_alarm_webhook.assert_not_awaited()
+
+
+async def test_trigger_alarm_targeting_multiple_entities_fires_once(
+    hass: HomeAssistant, setup_integration, mock_api
+) -> None:
+    """Targeting several speaker entities on the same console only fires once."""
+    hass.config_entries.async_update_entry(
+        setup_integration,
+        options={CONF_ALARM_WEBHOOK_ID: "configured-webhook-guid"},
+    )
+    await hass.async_block_till_done()
+    mic_volume_entity = _entity_id(hass, f"{MIC_ID}_volume")
+    nomic_volume_entity = _entity_id(hass, f"{NOMIC_ID}_volume")
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_TRIGGER_ALARM,
+        {"entity_id": [mic_volume_entity, nomic_volume_entity]},
+        blocking=True,
+    )
+    mock_api.trigger_alarm_webhook.assert_awaited_once_with("configured-webhook-guid")
 
 
 async def test_unload(hass: HomeAssistant, setup_integration) -> None:

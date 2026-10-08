@@ -233,3 +233,14 @@ class UnifiAiSpeakerApiClient:
         if volume is not None:
             body["volume"] = max(VOLUME_MIN, min(VOLUME_MAX, int(volume)))
         await self._request("POST", f"/speakers/{speaker_id}/test-sound", json=body)
+
+    async def trigger_alarm_webhook(self, webhook_id: str) -> None:
+        """Trigger a configured UniFi Alarm Manager automation.
+
+        ``POST /alarm-manager/webhook/{id}`` — the same endpoint the
+        console-provided webhook URL calls (verified against the Protect
+        Integration API OpenAPI spec). ``webhook_id`` is the user-defined
+        trigger ID configured on the Alarm Manager automation, not a speaker
+        ID. Returns 204 on success.
+        """
+        await self._request("POST", f"/alarm-manager/webhook/{webhook_id}")

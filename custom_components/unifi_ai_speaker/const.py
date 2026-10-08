@@ -20,6 +20,15 @@ CONF_RESTORE_DELAY: Final = "restore_delay"
 CONF_ALARM_PANEL: Final = "alarm_panel"
 CONF_PLAY_TEST_SOUND: Final = "play_test_sound_after_restore"
 CONF_TEST_SOUND_DELAY: Final = "test_sound_delay"
+CONF_ALARM_WEBHOOK_ID: Final = "alarm_webhook_id"
+
+# UI-facing choice presented instead of a bare boolean: "mute" silently, or
+# "test_sound" (play a confirmation chime at its own, configurable volume).
+# Maps directly onto CONF_PLAY_TEST_SOUND (False/True) when saved, so every
+# other module keeps reading/writing that one boolean unchanged.
+CONF_SILENCE_METHOD: Final = "silence_method"
+SILENCE_METHOD_MUTE: Final = "mute"
+SILENCE_METHOD_TEST_SOUND: Final = "test_sound"
 
 # Verify SSL defaults to False because UniFi Protect consoles ship with a
 # self-signed certificate on the LAN. The config flow explains the trade-off.
@@ -64,8 +73,10 @@ VOLUME_MAX: Final = 100
 SERVICE_MUTE_FOR_ALARM_DISARM: Final = "mute_for_alarm_disarm"
 SERVICE_RESTORE_ALARM_VOLUME: Final = "restore_alarm_volume"
 SERVICE_CANCEL_ALARM_MUTE: Final = "cancel_alarm_mute"
+SERVICE_TRIGGER_ALARM: Final = "trigger_alarm"
 
 ATTR_RESTORE_DELAY: Final = "restore_delay"
+ATTR_WEBHOOK_ID: Final = "webhook_id"
 
 # ---------------------------------------------------------------------------
 # Persistent storage (alarm mute state) — survives Home Assistant restarts

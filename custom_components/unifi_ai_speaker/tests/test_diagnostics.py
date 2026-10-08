@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr
-
 from custom_components.unifi_ai_speaker.const import (
     CONF_API_KEY,
     DOMAIN,
@@ -14,6 +11,8 @@ from custom_components.unifi_ai_speaker.const import (
 from custom_components.unifi_ai_speaker.diagnostics import (
     async_get_config_entry_diagnostics,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 
 from .const import API_KEY, SPEAKER_WITH_MIC
 

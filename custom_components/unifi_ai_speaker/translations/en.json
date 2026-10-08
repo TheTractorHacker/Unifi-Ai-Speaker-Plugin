@@ -55,17 +55,19 @@
         "title": "UniFi AI Speaker options",
         "data": {
           "restore_delay": "Alarm mute restore delay",
-          "play_test_sound_after_restore": "Play test sound after alarm disarmed",
+          "silence_method": "How to silence the alarm on disarm",
           "test_sound_delay": "Test sound delay",
           "test_sound_volume": "Test sound volume",
-          "alarm_panel": "Alarm panel for automatic mute (optional)"
+          "alarm_panel": "Alarm panel for automatic mute (optional)",
+          "alarm_webhook_id": "Alarm Manager webhook ID (optional)"
         },
         "data_description": {
           "restore_delay": "How long after a disarm-mute to restore the saved volume. Default 600 seconds (10 minutes).",
-          "play_test_sound_after_restore": "Play a short confirmation chime once the mute period ends, so you know it's over. The chime plays at its own Test sound volume below (not the speaker's real/alarm volume), and only afterward is the real volume restored — so the chime is never heard at full alarm loudness.",
-          "test_sound_delay": "How long to wait before and after playing the confirmation chime, so the volume change has time to apply and the chime has time to actually sound before the volume changes again. Default 2 seconds.",
-          "test_sound_volume": "Volume to set before playing the confirmation chime, independent of the speaker's real/alarm volume (which is restored right after). Keep this low for a speaker mounted somewhere a loud chime would be startling — e.g. a doorbell or alarm speaker in a hallway. Default 30%.",
-          "alarm_panel": "Optional, no YAML needed. If set, every speaker on this entry is automatically muted when this panel goes from triggered to disarmed, and the mute is cancelled immediately if the panel re-arms or re-triggers. Leave empty to keep the integration decoupled and drive it only via the unifi_ai_speaker.* services in your own automations/Alarmo actions."
+          "silence_method": "\"Mute only\" ends the mute silently. \"Play a test sound\" plays a short confirmation chime first — at its own Test sound volume below, not the speaker's real/alarm volume — so you know it's over, then restores the real volume. You can also skip this entirely and drive muting yourself via the unifi_ai_speaker.* services, e.g. from an Alarmo action.",
+          "test_sound_delay": "How long to wait before and after playing the confirmation chime, so the volume change has time to apply and the chime has time to actually sound before the volume changes again. Only used when \"Play a test sound\" is selected above. Default 2 seconds.",
+          "test_sound_volume": "Volume to set before playing the confirmation chime, independent of the speaker's real/alarm volume (which is restored right after). Keep this low for a speaker mounted somewhere a loud chime would be startling — e.g. a doorbell or alarm speaker in a hallway. Only used when \"Play a test sound\" is selected above. Default 30%.",
+          "alarm_panel": "Optional, no YAML needed. If set, every speaker on this entry is automatically muted when this panel goes from triggered to disarmed, and the mute is cancelled immediately if the panel re-arms or re-triggers. Leave empty to keep the integration decoupled and drive it only via the unifi_ai_speaker.* services in your own automations/Alarmo actions.",
+          "alarm_webhook_id": "The webhook ID from your UniFi Protect Alarm Manager automation (find it in Protect under Alarm Manager → your automation → the webhook URL ends in this GUID). Lets the unifi_ai_speaker.trigger_alarm action start that automation using the host/API key already configured here, instead of a separate rest_command in configuration.yaml. Leave empty if you don't need this."
         }
       }
     }
@@ -142,6 +144,16 @@
     "cancel_alarm_mute": {
       "name": "Cancel alarm mute",
       "description": "Cancel a pending restore and restore the saved volume at once. Use when the alarm re-arms or re-triggers."
+    },
+    "trigger_alarm": {
+      "name": "Trigger alarm",
+      "description": "Trigger the console's UniFi Alarm Manager webhook — lets an alarm panel start the alarm through this integration instead of a separate rest_command.",
+      "fields": {
+        "webhook_id": {
+          "name": "Webhook ID",
+          "description": "The Alarm Manager automation's webhook ID. Omit to use the ID configured in the integration's options."
+        }
+      }
     }
   }
 }

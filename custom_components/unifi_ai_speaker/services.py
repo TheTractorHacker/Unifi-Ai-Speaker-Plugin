@@ -1,15 +1,22 @@
 """Services for the UniFi AI Speaker integration.
 
-Three thin, loosely-coupled actions are exposed so alarm panels (e.g. Alarmo)
-can drive the mute lifecycle without this integration depending on them:
+Four thin, loosely-coupled actions are exposed so alarm panels (e.g. Alarmo)
+can drive the whole alarm lifecycle without this integration depending on
+them:
 
 * ``mute_for_alarm_disarm`` — save volume, set to 0, schedule restore.
 * ``restore_alarm_volume``  — restore the saved volume now.
 * ``cancel_alarm_mute``     — cancel the pending restore and restore now
                               (use on alarm re-arm/re-trigger).
+* ``trigger_alarm``         — POST the configured UniFi Alarm Manager
+                              webhook, so triggering the alarm can also be a
+                              GUI-configured action instead of a YAML
+                              ``rest_command``.
 
 Targets are resolved from entity/device/area selectors to the underlying
-speaker ids, so any entity of a speaker device may be targeted.
+speaker ids, so any entity of a speaker device may be targeted. For
+``trigger_alarm`` the target only identifies *which console*; targeting
+several entities/devices on the same console still fires the webhook once.
 """
 
 from __future__ import annotations
@@ -27,6 +34,8 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import (
     ATTR_RESTORE_DELAY,
+    ATTR_WEBHOOK_ID,
+    CONF_ALARM_WEBHOOK_ID,
     CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
     CONF_TEST_SOUND_DELAY,
@@ -43,6 +52,7 @@ from .const import (
     SERVICE_CANCEL_ALARM_MUTE,
     SERVICE_MUTE_FOR_ALARM_DISARM,
     SERVICE_RESTORE_ALARM_VOLUME,
+    SERVICE_TRIGGER_ALARM,
     VOLUME_MAX,
     VOLUME_MIN,
 )
@@ -72,6 +82,9 @@ _MUTE_SCHEMA = cv.make_entity_service_schema(
     }
 )
 _TARGET_ONLY_SCHEMA = cv.make_entity_service_schema({})
+_TRIGGER_ALARM_SCHEMA = cv.make_entity_service_schema(
+    {vol.Optional(ATTR_WEBHOOK_ID): cv.string}
+)
 
 
 @callback
@@ -133,6 +146,19 @@ def _resolve_targets(
     return results
 
 
+def _unique_runtimes(targets: list[tuple[RuntimeData, str]]) -> list[RuntimeData]:
+    """Dedupe resolved targets down to one entry per console.
+
+    Used by entry-level actions (like triggering an Alarm Manager webhook)
+    where the target is only used to identify *which console*, so targeting
+    several entities/devices on the same console must not repeat the action.
+    """
+    seen: dict[int, RuntimeData] = {}
+    for runtime, _ in targets:
+        seen[id(runtime)] = runtime
+    return list(seen.values())
+
+
 def _restore_delay_for(runtime: RuntimeData, call: ServiceCall) -> int:
     """Resolve the restore delay: call data > entry option > default."""
     if ATTR_RESTORE_DELAY in call.data:
@@ -171,6 +197,21 @@ def _test_sound_volume_for(runtime: RuntimeData, call: ServiceCall) -> int:
     return int(
         entry.options.get(CONF_TEST_SOUND_VOLUME, DEFAULT_TEST_SOUND_VOLUME)
     )
+
+
+def _webhook_id_for(runtime: RuntimeData, call: ServiceCall) -> str:
+    """Resolve the Alarm Manager webhook ID: call data > entry option."""
+    if ATTR_WEBHOOK_ID in call.data:
+        return str(call.data[ATTR_WEBHOOK_ID])
+    entry = runtime.coordinator.config_entry
+    assert entry is not None  # always set; this coordinator is entry-scoped
+    configured = entry.options.get(CONF_ALARM_WEBHOOK_ID)
+    if not configured:
+        raise ServiceValidationError(
+            "No Alarm Manager webhook ID is configured for this console. "
+            "Set one in the integration's options, or pass webhook_id."
+        )
+    return str(configured)
 
 
 @callback
@@ -213,6 +254,23 @@ def async_setup_services(hass: HomeAssistant) -> None:
         for runtime, speaker_id in _resolve_targets(hass, call):
             await runtime.mute.async_cancel(speaker_id)
 
+    async def _async_trigger_alarm(call: ServiceCall) -> None:
+        targets = _resolve_targets(hass, call)
+        if not targets:
+            raise ServiceValidationError(
+                "No UniFi AI Speaker was found for the given target"
+            )
+        for runtime in _unique_runtimes(targets):
+            webhook_id = _webhook_id_for(runtime, call)
+            try:
+                await runtime.coordinator.client.trigger_alarm_webhook(webhook_id)
+            except HomeAssistantError:
+                raise
+            except Exception as err:  # noqa: BLE001 - surface as HA error
+                raise HomeAssistantError(
+                    f"Failed to trigger alarm webhook: {err}"
+                ) from err
+
     hass.services.async_register(
         DOMAIN, SERVICE_MUTE_FOR_ALARM_DISARM, _async_mute, schema=_MUTE_SCHEMA
     )
@@ -221,4 +279,10 @@ def async_setup_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, SERVICE_CANCEL_ALARM_MUTE, _async_cancel, schema=_TARGET_ONLY_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_TRIGGER_ALARM,
+        _async_trigger_alarm,
+        schema=_TRIGGER_ALARM_SCHEMA,
     )

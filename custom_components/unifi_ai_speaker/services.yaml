@@ -89,3 +89,28 @@ cancel_alarm_mute:
       integration: unifi_ai_speaker
     device:
       integration: unifi_ai_speaker
+
+trigger_alarm:
+  name: Trigger alarm
+  description: >-
+    Trigger the console's UniFi Alarm Manager webhook, so an alarm panel like
+    Alarmo can start the alarm through this integration instead of a separate
+    rest_command. The target only identifies which console to use (by any
+    entity/device of a speaker on it) and does not affect speaker state
+    itself.
+  target:
+    entity:
+      integration: unifi_ai_speaker
+    device:
+      integration: unifi_ai_speaker
+  fields:
+    webhook_id:
+      name: Webhook ID
+      description: >-
+        The Alarm Manager automation's webhook ID (a GUID from its webhook
+        URL in Protect). Omit to use the ID configured in the integration's
+        options.
+      required: false
+      example: 695d5662-8940-42ef-a3e9-239cbd873d91
+      selector:
+        text:

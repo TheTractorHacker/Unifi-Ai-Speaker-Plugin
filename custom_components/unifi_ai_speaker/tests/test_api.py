@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
 from custom_components.unifi_ai_speaker.api import (
     Speaker,
     UnifiAiSpeakerApiClient,
@@ -14,6 +11,8 @@ from custom_components.unifi_ai_speaker.api import (
     UnifiNotFoundError,
     normalize_host,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import ALL_SPEAKERS, API_KEY, BASE, HOST, SPEAKER_WITH_MIC
 
@@ -122,4 +121,16 @@ async def test_test_sound_posts(hass: HomeAssistant, aioclient_mock) -> None:
     await _client(hass).test_sound("spk-with-mic")
     assert str(aioclient_mock.mock_calls[-1][1]).endswith(
         "/speakers/spk-with-mic/test-sound"
+    )
+
+
+async def test_trigger_alarm_webhook_posts_to_verified_endpoint(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """trigger_alarm_webhook posts to the alarm-manager webhook endpoint."""
+    webhook_id = "695d5662-8940-42ef-a3e9-239cbd873d91"
+    aioclient_mock.post(f"{BASE}/alarm-manager/webhook/{webhook_id}", status=204)
+    await _client(hass).trigger_alarm_webhook(webhook_id)
+    assert str(aioclient_mock.mock_calls[-1][1]).endswith(
+        f"/alarm-manager/webhook/{webhook_id}"
     )

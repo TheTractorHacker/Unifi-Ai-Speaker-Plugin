@@ -22,6 +22,10 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -35,10 +39,12 @@ from .api import (
 )
 from .const import (
     CONF_ALARM_PANEL,
+    CONF_ALARM_WEBHOOK_ID,
     CONF_API_KEY,
     CONF_HOST,
     CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
+    CONF_SILENCE_METHOD,
     CONF_TEST_SOUND_DELAY,
     CONF_TEST_SOUND_VOLUME,
     CONF_VERIFY_SSL,
@@ -52,6 +58,8 @@ from .const import (
     MAX_TEST_SOUND_DELAY,
     MIN_RESTORE_DELAY,
     MIN_TEST_SOUND_DELAY,
+    SILENCE_METHOD_MUTE,
+    SILENCE_METHOD_TEST_SOUND,
     VOLUME_MAX,
     VOLUME_MIN,
 )
@@ -268,13 +276,18 @@ class UnifiAiSpeakerConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class UnifiAiSpeakerOptionsFlow(OptionsFlow):
-    """Options: alarm-disarm mute behaviour and optional alarm panel.
+    """Options: alarm-disarm silence behaviour, alarm trigger, and panel.
 
     These are global, entry-wide settings (not per-speaker): every speaker
-    discovered on this console shares the same restore delay and
-    confirmation-chime behaviour. That matches the existing per-call
-    ``restore_delay``/``play_test_sound``/``test_sound_delay`` service fields,
-    which can still override these per invocation if ever needed.
+    discovered on this console shares them. That matches the existing
+    per-call ``restore_delay``/``play_test_sound``/``test_sound_delay``/
+    ``test_sound_volume``/``webhook_id`` service fields, which can still
+    override these per invocation if ever needed.
+
+    ``silence_method`` is a presentation-only choice shown here as "Mute
+    only" vs "Play a test sound" — it is converted to the underlying
+    ``CONF_PLAY_TEST_SOUND`` boolean on save, so every other module keeps
+    reading/writing that one boolean unchanged.
     """
 
     async def async_step_init(
@@ -282,13 +295,22 @@ class UnifiAiSpeakerOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
-            # An empty alarm panel string disables monitoring.
             cleaned = dict(user_input)
+            method = cleaned.pop(CONF_SILENCE_METHOD, SILENCE_METHOD_TEST_SOUND)
+            cleaned[CONF_PLAY_TEST_SOUND] = method == SILENCE_METHOD_TEST_SOUND
+            # Empty optional fields disable the corresponding feature.
             if not cleaned.get(CONF_ALARM_PANEL):
                 cleaned.pop(CONF_ALARM_PANEL, None)
+            if not cleaned.get(CONF_ALARM_WEBHOOK_ID):
+                cleaned.pop(CONF_ALARM_WEBHOOK_ID, None)
             return self.async_create_entry(title="", data=cleaned)
 
         options = self.config_entry.options
+        current_method = (
+            SILENCE_METHOD_TEST_SOUND
+            if options.get(CONF_PLAY_TEST_SOUND, DEFAULT_PLAY_TEST_SOUND)
+            else SILENCE_METHOD_MUTE
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -308,11 +330,22 @@ class UnifiAiSpeakerOptionsFlow(OptionsFlow):
                         )
                     ),
                     vol.Required(
-                        CONF_PLAY_TEST_SOUND,
-                        default=options.get(
-                            CONF_PLAY_TEST_SOUND, DEFAULT_PLAY_TEST_SOUND
-                        ),
-                    ): BooleanSelector(),
+                        CONF_SILENCE_METHOD, default=current_method
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                SelectOptionDict(
+                                    value=SILENCE_METHOD_MUTE,
+                                    label="Mute only (silent)",
+                                ),
+                                SelectOptionDict(
+                                    value=SILENCE_METHOD_TEST_SOUND,
+                                    label="Play a test sound",
+                                ),
+                            ],
+                            mode=SelectSelectorMode.LIST,
+                        )
+                    ),
                     vol.Required(
                         CONF_TEST_SOUND_DELAY,
                         default=options.get(
@@ -349,6 +382,12 @@ class UnifiAiSpeakerOptionsFlow(OptionsFlow):
                     ): EntitySelector(
                         EntitySelectorConfig(domain="alarm_control_panel")
                     ),
+                    vol.Optional(
+                        CONF_ALARM_WEBHOOK_ID,
+                        description={
+                            "suggested_value": options.get(CONF_ALARM_WEBHOOK_ID)
+                        },
+                    ): TextSelector(TextSelectorConfig(type=TextSelectorType.TEXT)),
                 }
             ),
         )

@@ -127,18 +127,24 @@ These are the alarm-disarm mute settings, all configured via the UI:
 | Option | Default | What it does |
 |---|---|---|
 | Restore delay | 600 seconds | How long to stay muted before restoring the saved volume. |
-| Play test sound after alarm disarmed | On | Plays a short confirmation chime once the mute period ends, so you know it's over. |
-| Test sound delay | 2 seconds | Wait before and after playing the chime, so volume changes have time to apply and the chime has time to actually sound. |
-| Test sound volume | 30% | Volume to use **for the chime only** — independent of the speaker's real/alarm volume, which is restored right after. |
+| How to silence the alarm on disarm | Play a test sound | Pick **Mute only** (ends silently) or **Play a test sound** (chimes first, then restores) — see below. |
+| Test sound delay | 2 seconds | Wait before and after playing the chime. Only used when "Play a test sound" is selected. |
+| Test sound volume | 30% | Volume to use **for the chime only** — independent of the speaker's real/alarm volume, which is restored right after. Only used when "Play a test sound" is selected. |
 | Alarm panel for automatic mute | *(none)* | Pick your alarm panel for a fully GUI, no-YAML alarm setup — see [Alarmo setup](#alarmo-setup). |
+| Alarm Manager webhook ID | *(none)* | Optional — lets `trigger_alarm` start your Alarm Manager automation through this integration instead of a separate `rest_command`. See [Alarmo setup](#alarmo-setup). |
 
-**Why a separate chime volume:** a speaker mounted for an alarm, doorbell, or
-announcement use may normally run quite loud. Playing the confirmation chime
-at that same volume is startling and defeats the point of muting — so the
-chime always plays at its own, typically much quieter, volume first, and only
-afterward is the real volume restored. Lower **Test sound volume** further for
-speakers in quiet areas, or set **Play test sound** off entirely if you'd
-rather the mute end silently.
+**The two silence options, explained:**
+- **Mute only** — the mute simply ends; volume goes back to normal, silently.
+- **Play a test sound** — a speaker mounted for an alarm, doorbell, or
+  announcement use may normally run quite loud, so playing the confirmation
+  chime at that same volume would be startling and defeat the point of
+  muting. Instead, the chime plays first at its own, typically much quieter,
+  **Test sound volume**, and only afterward is the real volume restored.
+
+You can also skip both and drive muting entirely yourself via the
+`unifi_ai_speaker.*` actions — e.g. wired into an Alarmo action — which is
+exactly [Option B](#option-b--explicit-alarmo-actions-advanced--multiple-panels)
+below.
 
 These are **global, entry-wide** settings — every speaker on a console shares
 them. If you ever need different behavior for one specific disarm event, the
@@ -183,15 +189,44 @@ no need to type an entity ID.
 | `unifi_ai_speaker.mute_for_alarm_disarm` | Save current volume → set 0 → schedule restore. Optional fields: `restore_delay`, `play_test_sound`, `test_sound_delay`, `test_sound_volume` (each overrides the integration option for this call only). |
 | `unifi_ai_speaker.restore_alarm_volume` | Restore the saved volume now and clear the mute. Plays the confirmation chime too, if enabled (same as an automatic restore). |
 | `unifi_ai_speaker.cancel_alarm_mute` | Cancel the pending restore and restore immediately. Never plays the confirmation chime — used for re-arm/re-trigger, when a new alarm needs to be audible right away. |
+| `unifi_ai_speaker.trigger_alarm` | POST the console's UniFi Alarm Manager webhook — the GUI-native alternative to a `rest_command`. Optional field `webhook_id` overrides the one configured in Options. The target only identifies *which console*; it doesn't touch speaker state itself. |
 
 ---
 
 ## Alarmo setup
 
-Your existing alarm **trigger** stays exactly as-is. Alarmo keeps calling your
-working `rest_command.unifi_alarm` (the Protect Alarm Manager webhook). This
-integration only adds the **disarm → silence** half — and there are two ways
-to wire that up.
+Your existing alarm **trigger** (`rest_command.unifi_alarm`) keeps working
+exactly as-is — nothing about it changes. This integration adds two things on
+top: a GUI-native alternative to that `rest_command` for *triggering* the
+alarm, and the **disarm → silence** half, each with a GUI and a YAML path.
+
+### Triggering the alarm — GUI alternative to the rest_command
+
+Your `rest_command.unifi_alarm` already works by POSTing to the Alarm
+Manager's webhook URL using the host and API key you hand-maintain in
+`configuration.yaml`. Since this integration already has that same host and
+API key (from setup), you can trigger the same webhook through it instead —
+all you need to add is the webhook ID itself:
+
+1. In Protect, open **Alarm Manager** → your automation → the webhook action.
+   The webhook URL ends in a GUID, e.g.
+   `.../alarm-manager/webhook/695d5662-8940-42ef-a3e9-239cbd873d91` — that's
+   the ID.
+2. Paste it into the integration's **⚙ Configure → Alarm Manager webhook ID**.
+3. Alarmo's **Triggered** action becomes:
+   ```yaml
+   service: unifi_ai_speaker.trigger_alarm
+   data:
+     entity_id: number.living_room_living_room_speaker_volume
+   ```
+   (the `entity_id` just identifies which console/integration entry to use —
+   it doesn't touch the speaker itself.)
+
+Your existing `rest_command.unifi_alarm` is untouched either way — use
+whichever you prefer, or keep both for redundancy.
+
+This integration adds the **disarm → silence** half regardless of which
+trigger method you use — there are two ways to wire that up too.
 
 ### Option A — GUI only, no YAML (recommended)
 
@@ -226,7 +261,7 @@ panel, or to combine with other automations.
 > shape of a working config. Your speaker's entity IDs will be named after
 > *your* speaker (check its device page), not these.
 
-**Alarmo — Triggered action (unchanged):**
+**Alarmo — Triggered action (unchanged, or switch to the GUI-configured version above):**
 ```yaml
 service: rest_command.unifi_alarm
 ```
@@ -394,47 +429,31 @@ webhook (`POST /alarm-manager/webhook/{id}`) is handled by your existing
 ## Logo / Home Assistant branding
 
 This integration ships an **original** speaker + sound-wave mark (not
-Ubiquiti's trademarked logo, not Home Assistant's logo). Brand assets live in
-[`brands/`](brands/):
+Ubiquiti's trademarked logo, not Home Assistant's logo), and it's already
+active — no extra setup needed.
 
-- `logo.svg` — scalable source
-- `icon.png` (256×256) / `icon@2x.png` (512×512) — required brands sizes
-- `logo.png` / `logo@2x.png` — square logo variants
-- `logo-wide.png` — horizontal lockup used in this README
+Since **Home Assistant Core 2026.3.0**, a custom integration can bundle its
+own icon/logo directly: Home Assistant serves any image found in a `brand/`
+folder inside the integration itself
+(`custom_components/unifi_ai_speaker/brand/`), before falling back to the
+community [`home-assistant/brands`](https://github.com/home-assistant/brands)
+repository or the default placeholder. No manifest change, no external PR, no
+review wait — it just works on the next restart after installing. (On older
+Home Assistant versions, before this folder is recognized, you'll see the
+default integration icon instead; the integration itself is unaffected
+either way.)
 
-**Home Assistant and HACS do not read these files from this repository.**
-They only render an integration's logo/icon in the UI when matching images
-exist in the separate, official
-[`home-assistant/brands`](https://github.com/home-assistant/brands) repository,
-keyed by the integration domain. A manifest.json `icon` field or a PNG sitting
-in `custom_components/` has **no effect** on the Settings UI — that is not a
-supported mechanism, and this project does not claim otherwise. Until a
-`brands` PR below is merged, Home Assistant shows its default integration icon
-for UniFi AI Speaker; the integration is fully functional either way.
-
-### Submitting the brands PR (one-time, by a maintainer)
-
-```sh
-# 1. Fork and clone home-assistant/brands, then from its root:
-mkdir -p custom_integrations/unifi_ai_speaker
-cp /path/to/this/repo/brands/icon.png      custom_integrations/unifi_ai_speaker/icon.png
-cp /path/to/this/repo/brands/icon@2x.png   custom_integrations/unifi_ai_speaker/icon@2x.png
-cp /path/to/this/repo/brands/logo.png      custom_integrations/unifi_ai_speaker/logo.png
-cp /path/to/this/repo/brands/logo@2x.png   custom_integrations/unifi_ai_speaker/logo@2x.png
-
-# 2. Commit and push to your fork
-git checkout -b add-unifi-ai-speaker
-git add custom_integrations/unifi_ai_speaker
-git commit -m "Add brand for unifi_ai_speaker"
-git push -u origin add-unifi-ai-speaker
-
-# 3. Open a PR against home-assistant/brands
-gh pr create --repo home-assistant/brands \
-  --title "Add brand: unifi_ai_speaker" \
-  --body "Adds icon/logo for the UniFi AI Speaker custom integration (domain: unifi_ai_speaker). Original artwork, not affiliated with Ubiquiti."
+```
+custom_components/unifi_ai_speaker/
+├── brand/
+│   ├── icon.png        256×256
+│   ├── icon@2x.png      512×512
+│   ├── logo.png        256×256 (optional)
+│   └── logo@2x.png      512×512 (optional)
+└── brands/              <- source assets for the above, plus logo.svg and
+                             the wide README lockup; not read by Home Assistant
 ```
 
-The `home-assistant/brands` repo validates image dimensions/format via CI;
-`icon.png`/`icon@2x.png` are required, `logo.png`/`logo@2x.png` optional but
-included here. Once merged, the icon appears automatically — no integration
-code change is needed on this side.
+The scalable source (`brands/logo.svg`) and the README's wide lockup
+(`brands/logo-wide.png`) live in the separate `brands/` folder at the repo
+root — keep both in sync if you ever update the artwork.
