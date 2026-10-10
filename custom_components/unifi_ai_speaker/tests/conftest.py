@@ -27,6 +27,7 @@ from custom_components.unifi_ai_speaker.const import (  # noqa: E402
     CONF_ALARM_PANEL,
     CONF_API_KEY,
     CONF_HOST,
+    CONF_PLAY_ARM_SOUND,
     CONF_VERIFY_SSL,
     DOMAIN,
 )
@@ -159,6 +160,29 @@ async def setup_integration_with_panel(hass: HomeAssistant, mock_api) -> ConfigE
             CONF_VERIFY_SSL: False,
         },
         options={CONF_ALARM_PANEL: PANEL_ENTITY_ID},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+@pytest.fixture
+async def setup_integration_with_panel_and_arm_sound(
+    hass: HomeAssistant, mock_api
+) -> ConfigEntry:
+    """Panel-configured entry with the arm-confirmation chirp also enabled."""
+    hass.states.async_set(PANEL_ENTITY_ID, "disarmed")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=f"UniFi AI Speaker ({HOST})",
+        unique_id=HOST,
+        data={
+            CONF_HOST: HOST,
+            CONF_API_KEY: API_KEY,
+            CONF_VERIFY_SSL: False,
+        },
+        options={CONF_ALARM_PANEL: PANEL_ENTITY_ID, CONF_PLAY_ARM_SOUND: True},
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)

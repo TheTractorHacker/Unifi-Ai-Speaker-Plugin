@@ -59,6 +59,7 @@
           "test_sound_delay": "Test sound delay",
           "test_sound_volume": "Test sound volume",
           "alarm_panel": "Alarm panel for automatic mute (optional)",
+          "play_sound_on_arm": "Play sound when alarm armed",
           "alarm_webhook_id": "Alarm Manager webhook ID (optional)"
         },
         "data_description": {
@@ -67,6 +68,7 @@
           "test_sound_delay": "How long to wait before and after playing the confirmation chime, so the volume change has time to apply and the chime has time to actually sound before the volume changes again. Only used when \"Play a test sound\" is selected above. Default 2 seconds.",
           "test_sound_volume": "Volume to set before playing the confirmation chime, independent of the speaker's real/alarm volume (which is restored right after). Keep this low for a speaker mounted somewhere a loud chime would be startling — e.g. a doorbell or alarm speaker in a hallway. Only used when \"Play a test sound\" is selected above. Default 30%.",
           "alarm_panel": "Optional, no YAML needed. If set, every speaker on this entry is automatically muted when this panel goes from triggered to disarmed, and the mute is cancelled immediately if the panel re-arms or re-triggers. Leave empty to keep the integration decoupled and drive it only via the unifi_ai_speaker.* services in your own automations/Alarmo actions.",
+          "play_sound_on_arm": "Play a short confirmation chirp — like a typical security panel's arming beep — when this alarm panel settles into an armed state (armed home/away/night/vacation/custom bypass). Plays once per arming, at the speaker's current volume; skipped for any speaker currently muted for an alarm. Only used when Alarm panel above is set.",
           "alarm_webhook_id": "The webhook ID from your UniFi Protect Alarm Manager automation (find it in Protect under Alarm Manager → your automation → the webhook URL ends in this GUID). Lets the unifi_ai_speaker.trigger_alarm action start that automation using the host/API key already configured here, instead of a separate rest_command in configuration.yaml. Leave empty if you don't need this."
         }
       }

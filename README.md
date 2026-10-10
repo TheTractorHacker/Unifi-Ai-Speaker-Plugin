@@ -131,6 +131,7 @@ These are the alarm-disarm mute settings, all configured via the UI:
 | Test sound delay | 2 seconds | Wait before and after playing the chime. Only used when "Play a test sound" is selected. |
 | Test sound volume | 30% | Volume to use **for the chime only** — independent of the speaker's real/alarm volume, which is restored right after. Only used when "Play a test sound" is selected. |
 | Alarm panel for automatic mute | *(none)* | Pick your alarm panel for a fully GUI, no-YAML alarm setup — see [Alarmo setup](#alarmo-setup). |
+| Play sound when alarm armed | Off | Optional confirmation chirp — see below. Only used when Alarm panel above is set. |
 | Alarm Manager webhook ID | *(none)* | Optional — lets `trigger_alarm` start your Alarm Manager automation through this integration instead of a separate `rest_command`. See [Alarmo setup](#alarmo-setup). |
 
 **The two silence options, explained:**
@@ -145,6 +146,16 @@ You can also skip both and drive muting entirely yourself via the
 `unifi_ai_speaker.*` actions — e.g. wired into an Alarmo action — which is
 exactly [Option B](#option-b--explicit-alarmo-actions-advanced--multiple-panels)
 below.
+
+**Play sound when alarm armed** is a separate, independent feature: a short
+confirmation chirp — like a typical security panel's arming beep — when the
+panel settles into any *armed* state (armed home/away/night/vacation/custom
+bypass), not the transient "arming" exit-delay countdown. It plays once per
+arming (an attribute-only refresh while already armed doesn't re-trigger it),
+at the speaker's **current** volume — no quiet-volume detour, since nothing is
+being muted. It's skipped for any speaker that happens to be muted for an
+alarm at that moment (e.g. you re-arm before the 10-minute restore has
+elapsed) rather than chirping through an active mute.
 
 These are **global, entry-wide** settings — every speaker on a console shares
 them. If you ever need different behavior for one specific disarm event, the

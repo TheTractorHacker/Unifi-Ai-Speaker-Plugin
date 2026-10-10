@@ -22,16 +22,18 @@ from homeassistant.helpers.storage import Store
 if TYPE_CHECKING:
     from homeassistant.helpers.event import EventStateChangedData
 
-from .api import UnifiAiSpeakerApiClient
+from .api import UnifiAiSpeakerApiClient, UnifiAiSpeakerError
 from .const import (
     CONF_ALARM_PANEL,
     CONF_API_KEY,
     CONF_HOST,
+    CONF_PLAY_ARM_SOUND,
     CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
     CONF_TEST_SOUND_DELAY,
     CONF_TEST_SOUND_VOLUME,
     CONF_VERIFY_SSL,
+    DEFAULT_PLAY_ARM_SOUND,
     DEFAULT_PLAY_TEST_SOUND,
     DEFAULT_RESTORE_DELAY,
     DEFAULT_TEST_SOUND_DELAY,
@@ -59,6 +61,17 @@ _ACTIVE_ALARM_STATES = {
     "arming",
     "pending",
     "triggered",
+    "armed_home",
+    "armed_away",
+    "armed_night",
+    "armed_vacation",
+    "armed_custom_bypass",
+}
+
+# The subset that means "actually armed" (not the transient exit-delay
+# countdown in "arming", nor an alarm condition) -- used for the optional
+# arm-confirmation chirp.
+_ARMED_STATES = {
     "armed_home",
     "armed_away",
     "armed_night",
@@ -142,7 +155,7 @@ def _setup_alarm_panel_monitor(
     """Optionally watch an alarm panel for a fully GUI, no-YAML alarm setup.
 
     This is opt-in: pick a panel in the integration's Options (a dropdown —
-    no YAML) and both halves of the alarm workflow happen automatically:
+    no YAML) and the alarm workflow happens automatically:
 
     * The panel goes from ``triggered`` to ``disarmed`` -> every speaker on
       this entry is muted for the alarm (same as calling
@@ -150,6 +163,14 @@ def _setup_alarm_panel_monitor(
     * The panel enters any non-disarmed state while a speaker is muted -> the
       mute is cancelled and the real volume restored immediately, so a new
       alarm is audible (re-trigger safety).
+    * If **Play sound when alarm armed** is also enabled, the panel settling
+      into any *armed* state (armed_home/away/night/vacation/custom_bypass —
+      not the transient "arming" countdown, and only on the transition into
+      it, not on every attribute refresh while already armed) plays a short
+      confirmation chirp at the speaker's current volume — like a typical
+      security panel's arming beep. This is independent of the disarm/mute
+      chime: no mute/restore cycle is involved, and it's skipped for any
+      speaker that happens to be muted at that moment.
 
     Only an explicit ``triggered -> disarmed`` transition auto-mutes, not
     every disarm, so routine "arm away -> disarm on arrival" doesn't cause an
@@ -172,6 +193,9 @@ def _setup_alarm_panel_monitor(
     )
     test_sound_volume = entry.options.get(
         CONF_TEST_SOUND_VOLUME, DEFAULT_TEST_SOUND_VOLUME
+    )
+    play_arm_sound = entry.options.get(
+        CONF_PLAY_ARM_SOUND, DEFAULT_PLAY_ARM_SOUND
     )
 
     @callback
@@ -204,16 +228,62 @@ def _setup_alarm_panel_monitor(
             return
 
         if new_state.state in _ACTIVE_ALARM_STATES:
-            for speaker_id in list(runtime.coordinator.data):
-                if runtime.mute.is_muted(speaker_id):
+            # Snapshot before scheduling anything: Home Assistant may run a
+            # newly-created task eagerly to completion right here (notably
+            # with mocked/non-blocking awaits, as in tests, but this is not
+            # guaranteed to defer in production either) -- deciding
+            # chirp-eligibility from a live is_muted() check made *after*
+            # scheduling the cancel tasks would make that decision depend on
+            # unpredictable execution order. Deciding from a fixed snapshot
+            # taken before any task runs is deterministic regardless.
+            all_speaker_ids = list(runtime.coordinator.data)
+            muted_speaker_ids = {
+                speaker_id
+                for speaker_id in all_speaker_ids
+                if runtime.mute.is_muted(speaker_id)
+            }
+            for speaker_id in muted_speaker_ids:
+                _LOGGER.info(
+                    "Alarm panel %s became %s; cancelling mute on speaker %s",
+                    panel_entity,
+                    new_state.state,
+                    speaker_id,
+                )
+                hass.async_create_task(runtime.mute.async_cancel(speaker_id))
+
+            just_armed = (
+                new_state.state in _ARMED_STATES
+                and (old_state is None or old_state.state not in _ARMED_STATES)
+            )
+            if play_arm_sound and just_armed:
+                for speaker_id in all_speaker_ids:
+                    if speaker_id in muted_speaker_ids:
+                        continue  # don't chirp through an active alarm mute
                     _LOGGER.info(
-                        "Alarm panel %s became %s; cancelling mute on speaker %s",
+                        "Alarm panel %s armed (%s); playing confirmation "
+                        "sound on speaker %s",
                         panel_entity,
                         new_state.state,
                         speaker_id,
                     )
-                    hass.async_create_task(runtime.mute.async_cancel(speaker_id))
+                    hass.async_create_task(
+                        _play_arm_confirmation(runtime, speaker_id)
+                    )
 
     entry.runtime_data.cancel_alarm_tracker = async_track_state_change_event(
         hass, [panel_entity], _handle
     )
+
+
+async def _play_arm_confirmation(runtime: RuntimeData, speaker_id: str) -> None:
+    """Play the arm-confirmation chirp, logging rather than raising on failure.
+
+    A fire-and-forget notification, not part of any mute/restore lifecycle —
+    a failure here must never surface as an unhandled task exception.
+    """
+    try:
+        await runtime.coordinator.client.test_sound(speaker_id)
+    except UnifiAiSpeakerError as err:
+        _LOGGER.warning(
+            "Arm-confirmation sound failed for speaker %s: %s", speaker_id, err
+        )

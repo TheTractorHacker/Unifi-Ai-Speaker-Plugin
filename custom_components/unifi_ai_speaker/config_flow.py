@@ -42,12 +42,14 @@ from .const import (
     CONF_ALARM_WEBHOOK_ID,
     CONF_API_KEY,
     CONF_HOST,
+    CONF_PLAY_ARM_SOUND,
     CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
     CONF_SILENCE_METHOD,
     CONF_TEST_SOUND_DELAY,
     CONF_TEST_SOUND_VOLUME,
     CONF_VERIFY_SSL,
+    DEFAULT_PLAY_ARM_SOUND,
     DEFAULT_PLAY_TEST_SOUND,
     DEFAULT_RESTORE_DELAY,
     DEFAULT_TEST_SOUND_DELAY,
@@ -382,6 +384,12 @@ class UnifiAiSpeakerOptionsFlow(OptionsFlow):
                     ): EntitySelector(
                         EntitySelectorConfig(domain="alarm_control_panel")
                     ),
+                    vol.Required(
+                        CONF_PLAY_ARM_SOUND,
+                        default=options.get(
+                            CONF_PLAY_ARM_SOUND, DEFAULT_PLAY_ARM_SOUND
+                        ),
+                    ): BooleanSelector(),
                     vol.Optional(
                         CONF_ALARM_WEBHOOK_ID,
                         description={

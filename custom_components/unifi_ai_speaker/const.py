@@ -22,6 +22,14 @@ CONF_PLAY_TEST_SOUND: Final = "play_test_sound_after_restore"
 CONF_TEST_SOUND_DELAY: Final = "test_sound_delay"
 CONF_ALARM_WEBHOOK_ID: Final = "alarm_webhook_id"
 
+# Optional short confirmation chirp when the alarm panel becomes armed (any
+# of the armed_* states, not the transient "arming" countdown) -- like a
+# typical security panel's arming beep. Independent of the disarm/mute chime
+# above: no mute/restore cycle is involved, it just plays at the speaker's
+# current volume. Only relevant when CONF_ALARM_PANEL is also set.
+CONF_PLAY_ARM_SOUND: Final = "play_sound_on_arm"
+DEFAULT_PLAY_ARM_SOUND: Final = False
+
 # UI-facing choice presented instead of a bare boolean: "mute" silently, or
 # "test_sound" (play a confirmation chime at its own, configurable volume).
 # Maps directly onto CONF_PLAY_TEST_SOUND (False/True) when saved, so every
