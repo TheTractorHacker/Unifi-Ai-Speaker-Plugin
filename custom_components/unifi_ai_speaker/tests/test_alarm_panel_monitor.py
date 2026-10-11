@@ -138,3 +138,81 @@ async def test_arm_sound_skipped_for_muted_speaker(
     # skipped; the re-arm still cancels its mute via the existing logic,
     # restoring real volume, but that's a separate assertion from chiming.
     mock_api.test_sound.assert_not_awaited()
+
+
+async def test_normal_disarm_plays_confirmation_sound_when_enabled(
+    hass: HomeAssistant, setup_integration_with_panel_and_disarm_sound, mock_api
+) -> None:
+    """A normal (never-triggered) disarm plays the chirp on every speaker."""
+    hass.states.async_set(PANEL_ENTITY_ID, "armed_away")
+    await hass.async_block_till_done()
+    mock_api.test_sound.reset_mock()
+
+    hass.states.async_set(PANEL_ENTITY_ID, "disarmed")
+    await hass.async_block_till_done()
+
+    mock_api.test_sound.assert_any_await(MIC_ID)
+    mock_api.test_sound.assert_any_await(NOMIC_ID)
+    assert mock_api.test_sound.await_count == 2
+
+
+async def test_disarm_sound_disabled_by_default(
+    hass: HomeAssistant, setup_integration_with_panel, mock_api
+) -> None:
+    """Without the option enabled, a normal disarm never plays the chirp."""
+    hass.states.async_set(PANEL_ENTITY_ID, "armed_away")
+    await hass.async_block_till_done()
+    mock_api.test_sound.reset_mock()
+
+    hass.states.async_set(PANEL_ENTITY_ID, "disarmed")
+    await hass.async_block_till_done()
+
+    mock_api.test_sound.assert_not_awaited()
+
+
+async def test_triggered_disarm_does_not_also_play_normal_disarm_sound(
+    hass: HomeAssistant, setup_integration_with_panel_and_disarm_sound, mock_api
+) -> None:
+    """A triggered->disarmed event only uses the mute/restore chime path,
+    never this separate normal-disarm chirp (which would double it up)."""
+    hass.states.async_set(PANEL_ENTITY_ID, "triggered")
+    await hass.async_block_till_done()
+    mock_api.test_sound.reset_mock()
+
+    hass.states.async_set(PANEL_ENTITY_ID, "disarmed")
+    await hass.async_block_till_done()
+
+    # The mute/restore chime (if any) only fires after restore_delay elapses,
+    # not immediately -- so no test_sound call happens synchronously here.
+    mock_api.test_sound.assert_not_awaited()
+
+    # Clean up the still-pending restore timers rather than leaving them
+    # dangling (triggered->disarmed auto-mutes with a 600s default delay).
+    runtime = setup_integration_with_panel_and_disarm_sound.runtime_data
+    for speaker_id in list(runtime.coordinator.data):
+        await runtime.mute.async_restore(speaker_id)
+
+
+async def test_disarm_sound_skipped_for_muted_speaker(
+    hass: HomeAssistant, setup_integration_with_panel_and_disarm_sound, mock_api
+) -> None:
+    """A speaker already muted at disarm time (edge case) is skipped."""
+    hass.states.async_set(PANEL_ENTITY_ID, "armed_away")
+    await hass.async_block_till_done()
+
+    # Mute MIC_ID directly via the controller *after* the panel has settled
+    # into armed_away (not via a panel transition, which would immediately
+    # cancel it again) -- simulates "somehow still muted" from an earlier
+    # triggered event whose restore_delay hasn't elapsed yet.
+    runtime = setup_integration_with_panel_and_disarm_sound.runtime_data
+    await runtime.mute.async_mute(MIC_ID, 600)
+    mock_api.test_sound.reset_mock()
+
+    hass.states.async_set(PANEL_ENTITY_ID, "disarmed")
+    await hass.async_block_till_done()
+
+    mock_api.test_sound.assert_any_await(NOMIC_ID)
+    assert (MIC_ID,) not in [c.args for c in mock_api.test_sound.await_args_list]
+
+    # Clean up the still-pending restore timer rather than leaving it dangling.
+    await runtime.mute.async_restore(MIC_ID)

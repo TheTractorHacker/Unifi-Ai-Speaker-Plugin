@@ -28,12 +28,14 @@ from .const import (
     CONF_API_KEY,
     CONF_HOST,
     CONF_PLAY_ARM_SOUND,
+    CONF_PLAY_DISARM_SOUND,
     CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
     CONF_TEST_SOUND_DELAY,
     CONF_TEST_SOUND_VOLUME,
     CONF_VERIFY_SSL,
     DEFAULT_PLAY_ARM_SOUND,
+    DEFAULT_PLAY_DISARM_SOUND,
     DEFAULT_PLAY_TEST_SOUND,
     DEFAULT_RESTORE_DELAY,
     DEFAULT_TEST_SOUND_DELAY,
@@ -69,8 +71,8 @@ _ACTIVE_ALARM_STATES = {
 }
 
 # The subset that means "actually armed" (not the transient exit-delay
-# countdown in "arming", nor an alarm condition) -- used for the optional
-# arm-confirmation chirp.
+# countdown in "arming", nor an alarm condition) -- used for both the
+# optional arm-confirmation chirp and the optional normal-disarm chirp.
 _ARMED_STATES = {
     "armed_home",
     "armed_away",
@@ -171,6 +173,11 @@ def _setup_alarm_panel_monitor(
       security panel's arming beep. This is independent of the disarm/mute
       chime: no mute/restore cycle is involved, and it's skipped for any
       speaker that happens to be muted at that moment.
+    * If **Play sound when alarm disarmed** is also enabled, the symmetric
+      case: any armed_* state going straight to ``disarmed`` (a normal,
+      never-triggered disarm) plays the same kind of chirp. A
+      ``triggered -> disarmed`` transition is handled entirely by the
+      mute/restore chime above instead, so it never also fires this one.
 
     Only an explicit ``triggered -> disarmed`` transition auto-mutes, not
     every disarm, so routine "arm away -> disarm on arrival" doesn't cause an
@@ -196,6 +203,9 @@ def _setup_alarm_panel_monitor(
     )
     play_arm_sound = entry.options.get(
         CONF_PLAY_ARM_SOUND, DEFAULT_PLAY_ARM_SOUND
+    )
+    play_disarm_sound = entry.options.get(
+        CONF_PLAY_DISARM_SOUND, DEFAULT_PLAY_DISARM_SOUND
     )
 
     @callback
@@ -225,6 +235,27 @@ def _setup_alarm_panel_monitor(
                         test_sound_volume=test_sound_volume,
                     )
                 )
+            return
+
+        was_armed_normally = (
+            old_state is not None and old_state.state in _ARMED_STATES
+        )
+        if new_state.state == "disarmed" and was_armed_normally:
+            assert old_state is not None  # implied by was_armed_normally
+            if play_disarm_sound:
+                for speaker_id in list(runtime.coordinator.data):
+                    if runtime.mute.is_muted(speaker_id):
+                        continue  # don't chirp through an active alarm mute
+                    _LOGGER.info(
+                        "Alarm panel %s disarmed from %s; playing "
+                        "confirmation sound on speaker %s",
+                        panel_entity,
+                        old_state.state,
+                        speaker_id,
+                    )
+                    hass.async_create_task(
+                        _play_confirmation_chirp(runtime, speaker_id)
+                    )
             return
 
         if new_state.state in _ACTIVE_ALARM_STATES:
@@ -267,7 +298,7 @@ def _setup_alarm_panel_monitor(
                         speaker_id,
                     )
                     hass.async_create_task(
-                        _play_arm_confirmation(runtime, speaker_id)
+                        _play_confirmation_chirp(runtime, speaker_id)
                     )
 
     entry.runtime_data.cancel_alarm_tracker = async_track_state_change_event(
@@ -275,8 +306,8 @@ def _setup_alarm_panel_monitor(
     )
 
 
-async def _play_arm_confirmation(runtime: RuntimeData, speaker_id: str) -> None:
-    """Play the arm-confirmation chirp, logging rather than raising on failure.
+async def _play_confirmation_chirp(runtime: RuntimeData, speaker_id: str) -> None:
+    """Play the arm/disarm confirmation chirp, logging rather than raising.
 
     A fire-and-forget notification, not part of any mute/restore lifecycle —
     a failure here must never surface as an unhandled task exception.
@@ -285,5 +316,5 @@ async def _play_arm_confirmation(runtime: RuntimeData, speaker_id: str) -> None:
         await runtime.coordinator.client.test_sound(speaker_id)
     except UnifiAiSpeakerError as err:
         _LOGGER.warning(
-            "Arm-confirmation sound failed for speaker %s: %s", speaker_id, err
+            "Confirmation sound failed for speaker %s: %s", speaker_id, err
         )

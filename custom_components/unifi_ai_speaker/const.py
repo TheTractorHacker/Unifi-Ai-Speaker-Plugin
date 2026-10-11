@@ -30,6 +30,14 @@ CONF_ALARM_WEBHOOK_ID: Final = "alarm_webhook_id"
 CONF_PLAY_ARM_SOUND: Final = "play_sound_on_arm"
 DEFAULT_PLAY_ARM_SOUND: Final = False
 
+# Symmetric chirp for a *normal* disarm: any armed_* state going straight to
+# disarmed (not via "triggered", which already has its own dedicated
+# mute/restore chime above -- this would double up with that). Same
+# no-mute, current-volume behaviour as the arm chirp. Only relevant when
+# CONF_ALARM_PANEL is also set.
+CONF_PLAY_DISARM_SOUND: Final = "play_sound_on_disarm"
+DEFAULT_PLAY_DISARM_SOUND: Final = False
+
 # UI-facing choice presented instead of a bare boolean: "mute" silently, or
 # "test_sound" (play a confirmation chime at its own, configurable volume).
 # Maps directly onto CONF_PLAY_TEST_SOUND (False/True) when saved, so every

@@ -43,6 +43,7 @@ from .const import (
     CONF_API_KEY,
     CONF_HOST,
     CONF_PLAY_ARM_SOUND,
+    CONF_PLAY_DISARM_SOUND,
     CONF_PLAY_TEST_SOUND,
     CONF_RESTORE_DELAY,
     CONF_SILENCE_METHOD,
@@ -50,6 +51,7 @@ from .const import (
     CONF_TEST_SOUND_VOLUME,
     CONF_VERIFY_SSL,
     DEFAULT_PLAY_ARM_SOUND,
+    DEFAULT_PLAY_DISARM_SOUND,
     DEFAULT_PLAY_TEST_SOUND,
     DEFAULT_RESTORE_DELAY,
     DEFAULT_TEST_SOUND_DELAY,
@@ -388,6 +390,12 @@ class UnifiAiSpeakerOptionsFlow(OptionsFlow):
                         CONF_PLAY_ARM_SOUND,
                         default=options.get(
                             CONF_PLAY_ARM_SOUND, DEFAULT_PLAY_ARM_SOUND
+                        ),
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_PLAY_DISARM_SOUND,
+                        default=options.get(
+                            CONF_PLAY_DISARM_SOUND, DEFAULT_PLAY_DISARM_SOUND
                         ),
                     ): BooleanSelector(),
                     vol.Optional(
