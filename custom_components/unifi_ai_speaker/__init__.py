@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
@@ -140,7 +141,13 @@ async def async_unload_entry(
         runtime.mute.async_unload()
         if runtime.cancel_alarm_tracker is not None:
             runtime.cancel_alarm_tracker()
+        ir.async_delete_issue(hass, DOMAIN, _arm_sound_issue_id(entry))
     return unload_ok
+
+
+def _arm_sound_issue_id(entry: UnifiAiSpeakerConfigEntry) -> str:
+    """Repair-issue id for "sound enabled without a panel selected"."""
+    return f"arm_sound_without_panel_{entry.entry_id}"
 
 
 async def _async_reload_on_update(
@@ -188,8 +195,32 @@ def _setup_alarm_panel_monitor(
     relies on the explicit ``unifi_ai_speaker.*`` services instead.
     """
     panel_entity = entry.options.get(CONF_ALARM_PANEL)
+    play_arm_sound = entry.options.get(
+        CONF_PLAY_ARM_SOUND, DEFAULT_PLAY_ARM_SOUND
+    )
+    play_disarm_sound = entry.options.get(
+        CONF_PLAY_DISARM_SOUND, DEFAULT_PLAY_DISARM_SOUND
+    )
+    issue_id = _arm_sound_issue_id(entry)
+
     if not panel_entity:
+        if play_arm_sound or play_disarm_sound:
+            # These two options silently do nothing without a panel selected
+            # -- surface that clearly instead of leaving it a silent no-op.
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="arm_sound_without_panel",
+                translation_placeholders={"title": entry.title},
+            )
+        else:
+            ir.async_delete_issue(hass, DOMAIN, issue_id)
         return
+
+    ir.async_delete_issue(hass, DOMAIN, issue_id)
 
     restore_delay = entry.options.get(CONF_RESTORE_DELAY, DEFAULT_RESTORE_DELAY)
     play_test_sound = entry.options.get(
@@ -200,12 +231,6 @@ def _setup_alarm_panel_monitor(
     )
     test_sound_volume = entry.options.get(
         CONF_TEST_SOUND_VOLUME, DEFAULT_TEST_SOUND_VOLUME
-    )
-    play_arm_sound = entry.options.get(
-        CONF_PLAY_ARM_SOUND, DEFAULT_PLAY_ARM_SOUND
-    )
-    play_disarm_sound = entry.options.get(
-        CONF_PLAY_DISARM_SOUND, DEFAULT_PLAY_DISARM_SOUND
     )
 
     @callback

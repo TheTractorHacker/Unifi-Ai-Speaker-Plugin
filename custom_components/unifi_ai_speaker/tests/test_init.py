@@ -3,20 +3,25 @@
 from __future__ import annotations
 
 import pytest
-from custom_components.unifi_ai_speaker.api import Speaker, UnifiConnectionError
-from custom_components.unifi_ai_speaker.const import (
-    CONF_ALARM_WEBHOOK_ID,
-    DOMAIN,
-    SERVICE_CANCEL_ALARM_MUTE,
-    SERVICE_MUTE_FOR_ALARM_DISARM,
-    SERVICE_TRIGGER_ALARM,
-)
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 
+from custom_components.unifi_ai_speaker.api import Speaker, UnifiConnectionError
+from custom_components.unifi_ai_speaker.const import (
+    CONF_ALARM_PANEL,
+    CONF_ALARM_WEBHOOK_ID,
+    CONF_PLAY_ARM_SOUND,
+    DOMAIN,
+    SERVICE_CANCEL_ALARM_MUTE,
+    SERVICE_MUTE_FOR_ALARM_DISARM,
+    SERVICE_TRIGGER_ALARM,
+)
+
+from .conftest import PANEL_ENTITY_ID
 from .const import SPEAKER_NO_MIC, SPEAKER_WITH_MIC
 
 MIC_ID = SPEAKER_WITH_MIC["id"]
@@ -257,3 +262,52 @@ async def test_unload(hass: HomeAssistant, setup_integration) -> None:
     assert await hass.config_entries.async_unload(setup_integration.entry_id)
     await hass.async_block_till_done()
     assert setup_integration.state is ConfigEntryState.NOT_LOADED
+
+
+def _issue_id(entry) -> str:
+    return f"arm_sound_without_panel_{entry.entry_id}"
+
+
+async def test_no_sound_options_no_panel_creates_no_issue(
+    hass: HomeAssistant, setup_integration
+) -> None:
+    """With sound options off and no panel (the plain default), no repair
+    issue is raised -- that's a perfectly valid, fully decoupled setup."""
+    registry = ir.async_get(hass)
+    assert registry.async_get_issue(DOMAIN, _issue_id(setup_integration)) is None
+
+
+async def test_arm_sound_without_panel_creates_repair_issue(
+    hass: HomeAssistant, setup_integration
+) -> None:
+    """Enabling the arm chirp without selecting a panel raises a repair
+    issue, since otherwise the option silently has no effect at all."""
+    hass.config_entries.async_update_entry(
+        setup_integration, options={CONF_PLAY_ARM_SOUND: True}
+    )
+    await hass.async_block_till_done()
+
+    registry = ir.async_get(hass)
+    issue = registry.async_get_issue(DOMAIN, _issue_id(setup_integration))
+    assert issue is not None
+    assert issue.translation_key == "arm_sound_without_panel"
+
+
+async def test_selecting_panel_clears_the_repair_issue(
+    hass: HomeAssistant, setup_integration
+) -> None:
+    """Once a panel is selected, the repair issue clears automatically."""
+    hass.config_entries.async_update_entry(
+        setup_integration, options={CONF_PLAY_ARM_SOUND: True}
+    )
+    await hass.async_block_till_done()
+    registry = ir.async_get(hass)
+    issue_id = _issue_id(setup_integration)
+    assert registry.async_get_issue(DOMAIN, issue_id) is not None
+
+    hass.config_entries.async_update_entry(
+        setup_integration,
+        options={CONF_PLAY_ARM_SOUND: True, CONF_ALARM_PANEL: PANEL_ENTITY_ID},
+    )
+    await hass.async_block_till_done()
+    assert registry.async_get_issue(DOMAIN, issue_id) is None

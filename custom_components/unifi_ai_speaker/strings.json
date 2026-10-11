@@ -159,5 +159,11 @@
         }
       }
     }
+  },
+  "issues": {
+    "arm_sound_without_panel": {
+      "title": "Alarm sound options need an alarm panel selected",
+      "description": "\"{title}\" has \"Play sound when alarm armed\" and/or \"Play sound when alarm disarmed\" turned on, but no \"Alarm panel for automatic mute\" is selected — without a panel, these two options have no effect. Open the integration's Configure dialog and pick your alarm_control_panel entity, or turn the sound options off if you don't want this."
+    }
   }
 }
